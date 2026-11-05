@@ -983,13 +983,13 @@ local function createFinder(D)
                     local key=tostring(best.placeId)..':'..tostring(best.jobId)..':'..tostring(best.uid)
                     if attempted[key] and os.clock()-(lastAttemptAt[key] or 0)<20 then return end
                     attempted[key]=true;lastAttemptAt[key]=os.clock()
-                    joining=true;joiningKey=best.key
+                    joining=true
                     queryStatus='Auto Join: reserving '..tostring(best.name)..' ('..tostring(best.rate)..'/s)'
                     local claim,claimError=network(config.endpoint..'/v1/join','POST',
                         Http:JSONEncode({placeId=best.placeId,jobId=best.jobId,uid=best.uid,reporterId=reporterId,userId=D.player.UserId}),
                         headers())
                     if not claim or claim.allowed~=true then
-                        joining=false;joiningKey=nil
+                        joining=false
                         if claim and (claim.unavailable or claim.full) then
                             best.full=true;best.unavailable=claim.unavailable==true
                             queryStatus='Auto Join: best egg is no longer available; scanning again'
