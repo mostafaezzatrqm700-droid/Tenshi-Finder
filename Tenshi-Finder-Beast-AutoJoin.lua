@@ -557,8 +557,8 @@ local function createFinder(D)
     end
     local function styleScope()
         scope.BackgroundTransparency=0;myScope.BackgroundTransparency=0
-        scope.BackgroundColor3=othersOnly and Color3.fromRGB(48,50,58) or Color3.fromRGB(35,105,65)
-        myScope.BackgroundColor3=othersOnly and Color3.fromRGB(35,105,65) or Color3.fromRGB(48,50,58)
+        scope.BackgroundColor3=othersOnly and Color3.fromRGB(24,26,32) or Color3.fromRGB(28,92,54)
+        myScope.BackgroundColor3=othersOnly and Color3.fromRGB(28,92,54) or Color3.fromRGB(24,26,32)
         scope.TextColor3=Color3.new(1,1,1);myScope.TextColor3=Color3.new(1,1,1)
     end
     local requestScopeRender
@@ -698,7 +698,10 @@ local function createFinder(D)
     -- Beast Auto Join: selects the highest-income valid egg from the shared Finder feed.
     local autoJoinEnabled=false
     local autoJoinBusy=false
-    local autoJoinButton=D.make('TextButton',{Name='BeastAutoJoin',Text='BEAST AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-98),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(35,105,75),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
+    local autoJoinCandidates={}
+    local autoJoinCandidateIndex=1
+    local autoJoinRetryRequested=false
+    local autoJoinButton=D.make('TextButton',{Name='BeastAutoJoin',Text='BEAST AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(35,105,75),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
     autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
     D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},autoJoinButton)
@@ -709,8 +712,9 @@ local function createFinder(D)
     autoJoinButton.Activated:Connect(function()
         if not active then return end
         autoJoinEnabled=not autoJoinEnabled
+        autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
         paintAutoJoin()
-        queryStatus=autoJoinEnabled and 'Auto Join enabled: searching for eggs >= $1B/s' or 'Auto Join disabled'
+        queryStatus=autoJoinEnabled and 'Auto Join enabled: checking the top 3 servers' or 'Auto Join disabled'
     end)
     local publicBroadcastConfig=nil
     local featureConfig=nil
@@ -845,11 +849,9 @@ local function createFinder(D)
         queryStatus=data.tier=='premium' and string.format('PREMIUM | %d servers | %d reporters',data.servers or 0,data.participants or 0) or 'Updated'
         return true
     end
-    -- Poll the shared feed and reserve the best reported egg using the same
-    -- reservation contract as the manual JOIN buttons.
+    -- Auto Join tries no more than the three highest-value eligible reports.
+    -- Reservation failures and asynchronous teleport failures advance to the next candidate.
     task.spawn(function()
-        local attempted={}
-        local lastAttemptAt={}
         while active do
             if autoJoinEnabled and not autoJoinBusy and not joining then
                 autoJoinBusy=true
@@ -865,71 +867,99 @@ local function createFinder(D)
                             return
                         end
                     end
-                    local now=(os.clock()+clockOffset)*1000
-                    local best=nil
-                    for _,entry in ipairs(feed) do
-                        local rate=tonumber(entry.rate)
-                        local job=type(entry.jobId)=='string' and entry.jobId or ''
-                        local place=tonumber(entry.placeId)
-                        local expiry=tonumber(entry.expiresAt)
-                        local validEntry=job~='' and job~=game.JobId and place and place>0
-                            and expiry and expiry>now and rate and rate>=1000000000
-                            and entry.uid~=nil and entry.full~=true and entry.unavailable~=true
-                            and entry.takenConfirmed~=true
-                            and D.publicEntryAllowed(entry,now)
-                        if validEntry and (not best or rate>tonumber(best.rate or 0)) then best=entry end
+                    if #autoJoinCandidates==0 then
+                        local now=(os.clock()+clockOffset)*1000
+                        local candidates={}
+                        for _,entry in ipairs(feed) do
+                            local rate=tonumber(entry.rate)
+                            local job=type(entry.jobId)=='string' and entry.jobId or ''
+                            local place=tonumber(entry.placeId)
+                            local expiry=tonumber(entry.expiresAt)
+                            local validEntry=job~='' and job~=game.JobId and place and place>0
+                                and expiry and expiry>now and rate and rate>0
+                                and entry.uid~=nil and entry.full~=true and entry.unavailable~=true
+                                and entry.takenConfirmed~=true
+                                and D.publicEntryAllowed(entry,now)
+                            if validEntry then candidates[#candidates+1]=entry end
+                        end
+                        table.sort(candidates,function(a,b)
+                            local ar,br=tonumber(a.rate) or 0,tonumber(b.rate) or 0
+                            if ar~=br then return ar>br end
+                            return tostring(a.jobId)<tostring(b.jobId)
+                        end)
+                        for i=1,math.min(3,#candidates) do autoJoinCandidates[i]=candidates[i] end
+                        autoJoinCandidateIndex=1
+                        autoJoinRetryRequested=false
                     end
-                    if not best then
-                        queryStatus='Auto Join: no available egg at or above $1B/s'
+                    if autoJoinCandidateIndex>#autoJoinCandidates then
+                        queryStatus='Auto Join: all top 3 attempts failed'
+                        autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
+                        feedAt=0
                         return
                     end
-                    local key=tostring(best.placeId)..':'..tostring(best.jobId)..':'..tostring(best.uid)
-                    if attempted[key] and os.clock()-(lastAttemptAt[key] or 0)<20 then return end
-                    attempted[key]=true;lastAttemptAt[key]=os.clock()
-                    joining=true
-                    queryStatus='Auto Join: reserving '..tostring(best.name)..' ('..tostring(best.rate)..'/s)'
+                    local target=autoJoinCandidates[autoJoinCandidateIndex]
+                    local now=(os.clock()+clockOffset)*1000
+                    if not target or tonumber(target.expiresAt or 0)<=now then
+                        autoJoinCandidateIndex+=1
+                        autoJoinRetryRequested=true
+                        queryStatus='Auto Join: report expired; trying next server'
+                        return
+                    end
+                    local key=tostring(target.placeId)..':'..tostring(target.jobId)..':'..tostring(target.uid)
+                    queryStatus='Auto Join: trying #'..tostring(autoJoinCandidateIndex)..' '..tostring(target.name)..' ('..tostring(target.rate)..'/s)'
                     local claim,claimError=network(config.endpoint..'/v1/join','POST',
-                        Http:JSONEncode({placeId=best.placeId,jobId=best.jobId,uid=best.uid,reporterId=reporterId,userId=D.player.UserId}),
+                        Http:JSONEncode({placeId=target.placeId,jobId=target.jobId,uid=target.uid,reporterId=reporterId,userId=D.player.UserId}),
                         headers())
                     if not claim or claim.allowed~=true then
-                        joining=false
-                        if claim and (claim.unavailable or claim.full) then
-                            best.full=true;best.unavailable=claim.unavailable==true
-                            queryStatus='Auto Join: best egg is no longer available; scanning again'
-                        else
-                            queryStatus='Auto Join reservation: '..tostring(claim and (claim.error or 'not allowed') or claimError or 'request failed')
+                        if claim and (claim.unavailable or claim.full or claim.taken) then
+                            target.full=true;target.unavailable=claim.unavailable==true
                         end
+                        autoJoinCandidateIndex+=1
+                        autoJoinRetryRequested=true
                         feedAt=0
+                        queryStatus='Auto Join: server #'..tostring(autoJoinCandidateIndex-1)..' unavailable; trying next'
                         return
                     end
                     local shared,shareError=report()
                     if not shared then
-                        joining=false;
-                        queryStatus='Auto Join: could not publish current server: '..tostring(shareError)
+                        autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
+                        queryStatus='Auto Join: report failed; trying next server'
                         return
                     end
-                    local joinExpiry=math.min(tonumber(best.expiresAt) or math.huge,tonumber(claim.expiresAt) or math.huge)
+                    local joinExpiry=math.min(tonumber(target.expiresAt) or math.huge,tonumber(claim.expiresAt) or math.huge)
                     if now>=joinExpiry then
-                        joining=false;feedAt=0
-                        queryStatus='Auto Join: egg report expired; scanning again'
+                        autoJoinCandidateIndex+=1;autoJoinRetryRequested=true;feedAt=0
+                        queryStatus='Auto Join: report expired; trying next server'
                         return
                     end
-                    queryStatus='Auto Join: joining best egg server'
+                    joining=true
+                    queryStatus='Auto Join: joining server #'..tostring(autoJoinCandidateIndex)
                     D.saveGuiBeforeTeleport()
                     queueTenshiAfterTeleport()
                     D.stopFarm()
-                    Teleports:TeleportToPlaceInstance(best.placeId,best.jobId,D.player)
+                    local teleported,teleportError=pcall(function()
+                        Teleports:TeleportToPlaceInstance(target.placeId,target.jobId,D.player)
+                    end)
+                    if not teleported then
+                        joining=false
+                        autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
+                        queryStatus='Auto Join: teleport failed; trying next server'
+                        warn('Tenshi Beast Auto Join teleport:',teleportError)
+                    end
                 end)
                 if not ok then
-                    joining=false;
+                    joining=false
+                    autoJoinCandidateIndex+=1
+                    autoJoinRetryRequested=true
                     queryStatus='Auto Join error: '..tostring(err)
                     warn('Tenshi Beast Auto Join:',err)
                 end
                 autoJoinBusy=false
             end
-            task.wait(1.5)
+            task.wait(1.2)
         end
     end)
+
     local lastRender
     local rarityColors={
         divine=Color3.fromRGB(255,205,55),eternal=Color3.fromRGB(218,202,236),
@@ -1135,8 +1165,9 @@ local function createFinder(D)
         refreshFont()
     end
     -- Bottom options use crisp native rounded text instead of bitmap captions.
-    for _,button in ipairs({scope,myScope,rarity,unlock,refreshButton,sizeMinus,sizePlus}) do styleRaisedButton(button) end
-    for _,button in ipairs({scope,myScope,rarity,unlock}) do
+    styleScope() -- Reapply opaque dark tab colors after all visual styling.
+    for _,button in ipairs({rarity,unlock,refreshButton,sizeMinus,sizePlus}) do styleRaisedButton(button) end
+    for _,button in ipairs({rarity,unlock}) do
         button.Font=Enum.Font.FredokaOne
         local caption=button:FindFirstChild('RaisedCaption')
         if caption then
@@ -2246,7 +2277,14 @@ local function createFinder(D)
     panel.Visible=true
     local failed=Teleports.TeleportInitFailed:Connect(function(who,_,message)
         if who==D.player then
-            joining=false;queryStatus='Join failed: '..tostring(message)
+            joining=false
+            if autoJoinEnabled and autoJoinCandidateIndex<=#autoJoinCandidates then
+                autoJoinCandidateIndex+=1
+                autoJoinRetryRequested=true
+                queryStatus='Auto Join: teleport failed; trying next of top 3'
+            else
+                queryStatus='Join failed: '..tostring(message)
+            end
         end
     end)
     D.gui.Destroying:Connect(function() active=false; failed:Disconnect();if localHighlight then localHighlight:Destroy() end end)
