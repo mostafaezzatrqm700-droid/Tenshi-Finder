@@ -1001,13 +1001,13 @@ local function createFinder(D)
                     end
                     local shared,shareError=report()
                     if not shared then
-                        joining=false;joiningKey=nil
+                        joining=false;
                         queryStatus='Auto Join: could not publish current server: '..tostring(shareError)
                         return
                     end
                     local joinExpiry=math.min(tonumber(best.expiresAt) or math.huge,tonumber(claim.expiresAt) or math.huge)
                     if now>=joinExpiry then
-                        joining=false;joiningKey=nil;feedAt=0
+                        joining=false;feedAt=0
                         queryStatus='Auto Join: egg report expired; scanning again'
                         return
                     end
@@ -1017,7 +1017,7 @@ local function createFinder(D)
                     Teleports:TeleportToPlaceInstance(best.placeId,best.jobId,D.player)
                 end)
                 if not ok then
-                    joining=false;joiningKey=nil
+                    joining=false;
                     queryStatus='Auto Join error: '..tostring(err)
                     warn('Tenshi Beast Auto Join:',err)
                 end
