@@ -1617,6 +1617,9 @@ local function createFinder(D)
 
     local joiningKey=nil
     local joinRetryAt=0
+    local manualJoinActive=false
+    local manualJoinAttemptId=0
+    local manualJoinNoticeUntil=0
     local cardsByKey={}
     local function compactCardHeight()
         return math.clamp(math.floor((panel.Size.Y.Offset-238-16)/5),76,112)
@@ -2061,44 +2064,60 @@ local function createFinder(D)
                 if not D.publicEntryAllowed(entry,(os.clock()+clockOffset)*1000) or entry.takenConfirmed or entry.full or entry.unavailable or joining or os.clock()<joinRetryAt or entry.jobId==game.JobId then return end
                 if (os.clock()+clockOffset)*1000>=entry.expiresAt then queryStatus='Report expired; refreshing'; feedAt=0; return end
                 joining=true;joiningKey=entry.key;joinRetryAt=os.clock()+0.4
-                queryStatus='Joining '..entry.name
+                manualJoinAttemptId+=1
+                local attemptId=manualJoinAttemptId
+                manualJoinActive=true;manualJoinNoticeUntil=math.huge
+                queryStatus='Checking reservation for '..entry.name
                 updateCard(card,entry,card.row.LayoutOrder or 1)
                 task.wait(0.35)
                 entry=card.entry
-                if not active then joining=false;joiningKey=nil;return end
+                if not active then joining=false;joiningKey=nil;manualJoinActive=false;return end
                 if not D.publicEntryAllowed(entry,(os.clock()+clockOffset)*1000) or entry.takenConfirmed or entry.full or entry.unavailable then
-                    joining=false;joiningKey=nil;updateCard(card,entry,card.row.LayoutOrder or 1);return
+                    joining=false;joiningKey=nil;manualJoinActive=false;manualJoinNoticeUntil=os.clock()+8;queryStatus='Server is no longer available; refreshing';updateCard(card,entry,card.row.LayoutOrder or 1);return
                 end
                 if (os.clock()+clockOffset)*1000>=entry.expiresAt then
-                    joining=false;joiningKey=nil;feedAt=-math.huge;render();return
+                    joining=false;joiningKey=nil;manualJoinActive=false;manualJoinNoticeUntil=os.clock()+8;feedAt=-math.huge;queryStatus='Server report expired; refreshing the list';render();return
                 end
-                if not config then joining=false;joiningKey=nil;queryStatus='Finder not connected';return end
+                if not config then joining=false;joiningKey=nil;manualJoinActive=false;manualJoinNoticeUntil=os.clock()+8;queryStatus='Finder not connected; check your connection';return end
                 local claim,claimError=network(config.endpoint..'/v1/join','POST',Http:JSONEncode({placeId=entry.placeId,jobId=entry.jobId,uid=entry.uid,reporterId=reporterId,userId=D.player.UserId}),headers())
                 if claim and claim.allowed~=true and (claim.unavailable or claim.full) then
-                    joining=false;joiningKey=nil;entry.full=true;entry.unavailable=claim.unavailable==true;entry.takenConfirmed=claim.takenConfirmed==true;lastRender=nil
-                    queryStatus='Egg no longer available';render();return
+                    joining=false;joiningKey=nil;manualJoinActive=false;manualJoinNoticeUntil=os.clock()+8;entry.full=true;entry.unavailable=claim.unavailable==true;entry.takenConfirmed=claim.takenConfirmed==true;lastRender=nil
+                    queryStatus='Server rejected: egg is no longer available';render();return
                 end
                 if not claim or claim.allowed~=true then
-                    joining=false;joiningKey=nil;feedAt=-math.huge
+                    joining=false;joiningKey=nil;manualJoinActive=false;manualJoinNoticeUntil=os.clock()+8;feedAt=-math.huge
                     if claim and not claim.retryable then
                         for _,item in ipairs(feed) do if item.jobId==entry.jobId then item.full=true end end
                         render()
                     end
-                    queryStatus=claim and (claim.error or 'Server reserved; choose another') or ('Join reservation failed: '..tostring(claimError))
+                    queryStatus=claim and ('Reservation denied: '..tostring(claim.error or 'server reserved; choose another')) or ('Connection failed: '..tostring(claimError))
                     return
                 end
                 -- The normal report heartbeat already publishes this server; do not block joining on another report POST.
                 local joinExpiry=math.min(entry.expiresAt,tonumber(claim.expiresAt) or entry.expiresAt)
                 if (os.clock()+clockOffset)*1000>=joinExpiry then
-                    joining=false;joiningKey=nil;feedAt=-math.huge;entry.expiresAt=joinExpiry;render()
-                    queryStatus='Reset reached; refreshing';return
+                    joining=false;joiningKey=nil;manualJoinActive=false;manualJoinNoticeUntil=os.clock()+8;feedAt=-math.huge;entry.expiresAt=joinExpiry;render()
+                    queryStatus='Reset reached before teleport; refreshing';return
                 end
+                queryStatus='Reservation accepted; requesting Roblox teleport...'
                 D.saveGuiBeforeTeleport()
                 queueTenshiAfterTeleport()
                 D.stopFarm()
                 local ok,err=pcall(function() Teleports:TeleportToPlaceInstance(entry.placeId,entry.jobId,D.player) end)
-                if not ok then queryStatus='Join failed: '..tostring(err); joining=false;joiningKey=nil end
-                task.delay(12,function() joining=false;joiningKey=nil end)
+                if not ok then
+                    manualJoinActive=false;manualJoinNoticeUntil=os.clock()+10
+                    queryStatus='Teleport call failed: '..tostring(err)
+                    joining=false;joiningKey=nil
+                else
+                    queryStatus='Teleport requested; waiting for Roblox...'
+                    task.delay(20,function()
+                        if active and manualJoinActive and manualJoinAttemptId==attemptId then
+                            manualJoinActive=false;joining=false;joiningKey=nil
+                            manualJoinNoticeUntil=os.clock()+10
+                            queryStatus='Teleport timed out; Roblox did not move you to that server. Try JOIN again.'
+                        end
+                    end)
+                end
             end)
             end
             card.entry=entry
@@ -2289,7 +2308,10 @@ local function createFinder(D)
     local failed=Teleports.TeleportInitFailed:Connect(function(who,_,message)
         if who==D.player then
             joining=false
-            if autoJoinEnabled and autoJoinCandidateIndex<=#autoJoinCandidates then
+            if manualJoinActive then
+                manualJoinActive=false;joiningKey=nil;manualJoinNoticeUntil=os.clock()+10
+                queryStatus='Roblox teleport rejected: '..tostring(message)
+            elseif autoJoinEnabled and autoJoinCandidateIndex<=#autoJoinCandidates then
                 autoJoinCandidateIndex+=1
                 autoJoinRetryRequested=true
                 queryStatus='Auto Join: teleport failed; trying next of top 5'
@@ -2324,7 +2346,9 @@ local function createFinder(D)
     end)
     task.spawn(function()
         while active do
-            status.Text=PREMIUM_EDITION and (tostring(reportStatus)..'\n'..tostring(queryStatus)) or (joining and 'Joining server…' or tostring(reportStatus))
+            local showJoinStatus=manualJoinActive or os.clock()<manualJoinNoticeUntil
+            status.Visible=showJoinStatus
+            status.Text=showJoinStatus and tostring(queryStatus) or (PREMIUM_EDITION and (tostring(reportStatus)..'\n'..tostring(queryStatus)) or tostring(reportStatus))
             local cycle=cycleInfo()
             if cycle then
                 local seconds=math.max(0,math.ceil(cycle.remaining))
