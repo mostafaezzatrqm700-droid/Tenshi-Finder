@@ -661,7 +661,11 @@ local function createFinder(D)
     local aliveMessage=D.label(list,loadingText(os.clock()),UDim2.new(),UDim2.new(1,-10,0,40),nil,12)
     local function network(url,method,body,headers,raw)
         if type(requestFn)~='function' then return nil,'Executor HTTP POST unavailable' end
-        if networkBusy then return nil,'Network request still pending' end
+        -- Serialize requests instead of dropping joins while the fast refresh is in flight.
+        local waitDeadline=os.clock()+12
+        while active and networkBusy and os.clock()<waitDeadline do task.wait(0.05) end
+        if not active then return nil,'Finder stopped' end
+        if networkBusy then return nil,'Network queue timeout' end
         networkBusy=true
         networkTicket+=1
         local ticket=networkTicket
@@ -2070,8 +2074,7 @@ local function createFinder(D)
                     queryStatus=claim and (claim.error or 'Server reserved; choose another') or ('Join reservation failed: '..tostring(claimError))
                     return
                 end
-                local shared,shareError=report()
-                if not shared then joining=false;joiningKey=nil;queryStatus='Save current server failed: '..tostring(shareError);return end
+                -- The normal report heartbeat already publishes this server; do not block joining on another report POST.
                 local joinExpiry=math.min(entry.expiresAt,tonumber(claim.expiresAt) or entry.expiresAt)
                 if (os.clock()+clockOffset)*1000>=joinExpiry then
                     joining=false;joiningKey=nil;feedAt=-math.huge;entry.expiresAt=joinExpiry;render()
