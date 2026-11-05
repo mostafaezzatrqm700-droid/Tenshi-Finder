@@ -694,6 +694,23 @@ local function createFinder(D)
     -- Roblox public-server directory, independent of the Finder report feed.
     status.Size=UDim2.new(0.53,-14,0,24)
     status.TextSize=11
+    -- Beast Auto Join: selects the highest-income valid egg from the shared Finder feed.
+    local autoJoinEnabled=false
+    local autoJoinBusy=false
+    local autoJoinButton=D.make('TextButton',{Name='BeastAutoJoin',Text='BEAST AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-98),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(35,105,75),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
+    D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
+    autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
+    D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},autoJoinButton)
+    local function paintAutoJoin()
+        autoJoinButton.Text=autoJoinEnabled and 'BEAST AUTO JOIN: ON' or 'BEAST AUTO JOIN: OFF'
+        autoJoinButton.BackgroundColor3=autoJoinEnabled and Color3.fromRGB(30,155,85) or Color3.fromRGB(35,105,75)
+    end
+    autoJoinButton.Activated:Connect(function()
+        if not active then return end
+        autoJoinEnabled=not autoJoinEnabled
+        paintAutoJoin()
+        queryStatus=autoJoinEnabled and 'Auto Join enabled: searching for the highest egg' or 'Auto Join disabled'
+    end)
     local randomJoin=D.make('TextButton',{Name='RandomServer',Text='JOIN RANDOM SERVER',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(195,38,55),TextColor3=Color3.new(1,1,1),TextSize=12,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},randomJoin)
     randomJoin.TextScaled=true;randomJoin.TextWrapped=false
@@ -925,6 +942,90 @@ local function createFinder(D)
         queryStatus=data.tier=='premium' and string.format('PREMIUM | %d servers | %d reporters',data.servers or 0,data.participants or 0) or 'Updated'
         return true
     end
+    -- Poll the shared feed and reserve the best reported egg using the same
+    -- reservation contract as the manual JOIN buttons.
+    task.spawn(function()
+        local attempted={}
+        local lastAttemptAt={}
+        while active do
+            if autoJoinEnabled and not autoJoinBusy and not joining then
+                autoJoinBusy=true
+                local ok,err=pcall(function()
+                    if not config then
+                        queryStatus='Auto Join: waiting for Finder connection'
+                        return
+                    end
+                    if os.clock()-feedAt>6 then
+                        local refreshed,message=refresh()
+                        if not refreshed then
+                            queryStatus='Auto Join: '..tostring(message or 'feed refresh failed')
+                            return
+                        end
+                    end
+                    local now=(os.clock()+clockOffset)*1000
+                    local best=nil
+                    for _,entry in ipairs(feed) do
+                        local rate=tonumber(entry.rate)
+                        local job=type(entry.jobId)=='string' and entry.jobId or ''
+                        local place=tonumber(entry.placeId)
+                        local expiry=tonumber(entry.expiresAt)
+                        local validEntry=job~='' and job~=game.JobId and place and place>0
+                            and expiry and expiry>now and rate and rate>0
+                            and entry.uid~=nil and entry.full~=true and entry.unavailable~=true
+                            and entry.takenConfirmed~=true
+                            and D.publicEntryAllowed(entry,now)
+                        if validEntry and (not best or rate>tonumber(best.rate or 0)) then best=entry end
+                    end
+                    if not best then
+                        queryStatus='Auto Join: no valid egg reports yet'
+                        return
+                    end
+                    local key=tostring(best.placeId)..':'..tostring(best.jobId)..':'..tostring(best.uid)
+                    if attempted[key] and os.clock()-(lastAttemptAt[key] or 0)<20 then return end
+                    attempted[key]=true;lastAttemptAt[key]=os.clock()
+                    joining=true;joiningKey=best.key
+                    queryStatus='Auto Join: reserving '..tostring(best.name)..' ('..tostring(best.rate)..'/s)'
+                    local claim,claimError=network(config.endpoint..'/v1/join','POST',
+                        Http:JSONEncode({placeId=best.placeId,jobId=best.jobId,uid=best.uid,reporterId=reporterId,userId=D.player.UserId}),
+                        headers())
+                    if not claim or claim.allowed~=true then
+                        joining=false;joiningKey=nil
+                        if claim and (claim.unavailable or claim.full) then
+                            best.full=true;best.unavailable=claim.unavailable==true
+                            queryStatus='Auto Join: best egg is no longer available; scanning again'
+                        else
+                            queryStatus='Auto Join reservation: '..tostring(claim and (claim.error or 'not allowed') or claimError or 'request failed')
+                        end
+                        feedAt=0
+                        return
+                    end
+                    local shared,shareError=report()
+                    if not shared then
+                        joining=false;joiningKey=nil
+                        queryStatus='Auto Join: could not publish current server: '..tostring(shareError)
+                        return
+                    end
+                    local joinExpiry=math.min(tonumber(best.expiresAt) or math.huge,tonumber(claim.expiresAt) or math.huge)
+                    if now>=joinExpiry then
+                        joining=false;joiningKey=nil;feedAt=0
+                        queryStatus='Auto Join: egg report expired; scanning again'
+                        return
+                    end
+                    queryStatus='Auto Join: joining best egg server'
+                    D.saveGuiBeforeTeleport()
+                    D.stopFarm()
+                    Teleports:TeleportToPlaceInstance(best.placeId,best.jobId,D.player)
+                end)
+                if not ok then
+                    joining=false;joiningKey=nil
+                    queryStatus='Auto Join error: '..tostring(err)
+                    warn('Tenshi Beast Auto Join:',err)
+                end
+                autoJoinBusy=false
+            end
+            task.wait(1.5)
+        end
+    end)
     local lastRender
     local rarityColors={
         divine=Color3.fromRGB(255,205,55),eternal=Color3.fromRGB(218,202,236),
@@ -2296,21 +2397,6 @@ end
 
 
 local function run()
-    -- Build the Finder UI before loading game-specific modules. This way
-    -- a missing or changed game module cannot prevent the menu from appearing.
-    local latestEntries={}
-    local latestMetadata=nil
-    local lastScan=0
-    local function parseValue(text)
-        local amount,suffix=tostring(text):gsub(',',''):match('^%s*%$?%s*(%d+%.?%d*)%s*(%a*)%s*$')
-        local powers={['']=1,k=1e3,m=1e6,b=1e9,t=1e12,qa=1e15,qi=1e18}
-        local factor=suffix and powers[suffix:lower()]
-        if not amount or not factor then return nil end
-        local value=tonumber(amount)*factor
-        return valid(value) and value or nil
-    end
-    createFinder({gui=gui,localPanel={Visible=false},player=player,make=make,label=label,entries=function() return os.clock()-lastScan<10 and latestEntries or {} end,metadata=function() return latestMetadata end,ready=function() return lastScan>0 and os.clock()-lastScan<10 end,parseValue=parseValue,money=money,stopFarm=function() end})
-
     local EggState=module('Client.EggState')
     local Assets=module('Data.Assets')
     local States=module('Shared.Types.AreaEggs').States
@@ -2321,8 +2407,20 @@ local function run()
     pcall(function() rarities=module('Data.Rarity') end)
     assert(type(EggState.ReadFieldEggs)=='function','ReadFieldEggs unavailable')
     assert(type(Assets.Directory)=='table' and States and States.Slot~=nil,'Game schema changed')
+    local latestEntries={}
+    local latestMetadata=nil
     local scanCycle
     pcall(function() scanCycle=module('Shared.Util.AreaEggCycle') end)
+    local function parseValue(text)
+        local amount,suffix=tostring(text):gsub(',',''):match('^%s*%$?%s*(%d+%.?%d*)%s*(%a*)%s*$')
+        local powers={['']=1,k=1e3,m=1e6,b=1e9,t=1e12,qa=1e15,qi=1e18}
+        local factor=suffix and powers[suffix:lower()]
+        if not amount or not factor then return nil end
+        local value=tonumber(amount)*factor
+        return valid(value) and value or nil
+    end
+    local lastScan=0
+    createFinder({gui=gui,localPanel={Visible=false},player=player,make=make,label=label,entries=function() return os.clock()-lastScan<10 and latestEntries or {} end,metadata=function() return latestMetadata end,ready=function() return lastScan>0 and os.clock()-lastScan<10 end,parseValue=parseValue,money=money,stopFarm=function() end})
     local notified={}
     local exported={}
     -- Inspect exported tables only. Never call unknown controller functions/remotes.
@@ -2503,5 +2601,40 @@ local function run()
 end
  task.spawn(function()
     local ok,err=pcall(run)
-    if not ok then warn('NYX Finder startup:',err) end
+    if not ok then
+        warn('NYX Finder startup:',err)
+        pcall(function()
+            if gui and gui.Parent and not gui:FindFirstChild('TenshiStartupFallback') then
+                local fallback=Instance.new('Frame')
+                fallback.Name='TenshiStartupFallback'
+                fallback.Size=UDim2.fromOffset(310,118)
+                fallback.Position=UDim2.new(0.5,-155,0.5,-59)
+                fallback.BackgroundColor3=Color3.fromRGB(24,25,32)
+                fallback.BorderSizePixel=0
+                fallback.Parent=gui
+                local corner=Instance.new('UICorner');corner.CornerRadius=UDim.new(0,10);corner.Parent=fallback
+                local title=Instance.new('TextLabel')
+                title.Size=UDim2.new(1,-20,0,28);title.Position=UDim2.fromOffset(10,8)
+                title.BackgroundTransparency=1;title.Text='TENSHI FINDER'
+                title.TextColor3=Color3.new(1,1,1);title.Font=Enum.Font.GothamBold;title.TextSize=17;title.Parent=fallback
+                local message=Instance.new('TextLabel')
+                message.Size=UDim2.new(1,-20,0,34);message.Position=UDim2.fromOffset(10,39)
+                message.BackgroundTransparency=1;message.Text='Startup failed: '..tostring(err):sub(1,100)
+                message.TextWrapped=true;message.TextColor3=Color3.fromRGB(255,190,120)
+                message.Font=Enum.Font.Gotham;message.TextSize=11;message.Parent=fallback
+                local retry=Instance.new('TextButton')
+                retry.Size=UDim2.new(1,-20,0,30);retry.Position=UDim2.fromOffset(10,80)
+                retry.BackgroundColor3=Color3.fromRGB(40,130,80);retry.Text='RETRY'
+                retry.TextColor3=Color3.new(1,1,1);retry.Font=Enum.Font.GothamBold;retry.TextSize=13;retry.Parent=fallback
+                local retryCorner=Instance.new('UICorner');retryCorner.CornerRadius=UDim.new(0,6);retryCorner.Parent=retry
+                retry.Activated:Connect(function()
+                    fallback:Destroy()
+                    task.spawn(function()
+                        local retryOk,retryErr=pcall(run)
+                        if not retryOk then warn('NYX Finder retry:',retryErr) end
+                    end)
+                end)
+            end
+        end)
+    end
 end)
