@@ -2250,83 +2250,6 @@ local function createFinder(D)
         end
     end)
     D.gui.Destroying:Connect(function() active=false; failed:Disconnect();if localHighlight then localHighlight:Destroy() end end)
-
-    -- Beast Egg auto-join: watches the same verified Finder feed as the manual JOIN buttons.
-    local AUTO_JOIN_BEAST = true
-    local autoBeastRetryAt = 0
-    local function autoJoinBeast()
-        if not AUTO_JOIN_BEAST or not active or joining or randomBusy or networkBusy
-            or os.clock() < autoBeastRetryAt or not config then return end
-
-        local now = (os.clock()+clockOffset)*1000
-        local target
-        for _,entry in ipairs(feed) do
-            if type(entry)=='table'
-                and canonical(entry.name)=='beast'
-                and type(entry.jobId)=='string' and entry.jobId~=''
-                and entry.jobId~=game.JobId
-                and type(entry.placeId)=='number'
-                and type(entry.expiresAt)=='number'
-                and now < entry.expiresAt
-                and not entry.full and not entry.unavailable and not entry.takenConfirmed
-                and D.publicEntryAllowed(entry,now) then
-                target=entry
-                break
-            end
-        end
-        if not target then return end
-
-        autoBeastRetryAt=os.clock()+8
-        joining=true
-        joiningKey=target.key
-        queryStatus='Beast Egg found — checking server...'
-
-        task.spawn(function()
-            local teleportStarted=false
-            local ok,err=pcall(function()
-                if not active or not D.publicEntryAllowed(target,(os.clock()+clockOffset)*1000) then
-                    error('Beast Egg report expired')
-                end
-                local claim,claimError=network(config.endpoint..'/v1/join','POST',
-                    Http:JSONEncode({placeId=target.placeId,jobId=target.jobId,uid=target.uid,
-                        reporterId=reporterId,userId=D.player.UserId}),headers())
-                if not claim or claim.allowed~=true then
-                    if claim and (claim.unavailable or claim.full) then
-                        target.full=true
-                        target.unavailable=claim.unavailable==true
-                        target.takenConfirmed=claim.takenConfirmed==true
-                        lastRender=nil
-                    end
-                    error(claim and (claim.error or 'Beast Egg is no longer available')
-                        or ('Join reservation failed: '..tostring(claimError)))
-                end
-
-                local shared,shareError=report()
-                if not shared then error('Could not refresh this server report: '..tostring(shareError)) end
-
-                local joinExpiry=math.min(target.expiresAt,tonumber(claim.expiresAt) or target.expiresAt)
-                if (os.clock()+clockOffset)*1000>=joinExpiry then
-                    feedAt=-math.huge
-                    error('Beast Egg report expired; refreshing Finder')
-                end
-
-                D.saveGuiBeforeTeleport()
-                D.stopFarm()
-                teleportStarted=true
-                queryStatus='Beast Egg found — joining server...'
-                Teleports:TeleportToPlaceInstance(target.placeId,target.jobId,D.player)
-            end)
-            if not ok then
-                queryStatus='Beast auto-join: '..tostring(err)
-                joining=false
-                joiningKey=nil
-            elseif not teleportStarted then
-                joining=false
-                joiningKey=nil
-            end
-        end)
-    end
-
     task.spawn(function()
         local lastReport=-math.huge
         local lastPeakSignature=nil
@@ -2345,7 +2268,6 @@ local function createFinder(D)
                     if not success then warn('Tenshi broadcast: '..tostring(message)) end
                 end
                 if (not PREMIUM_EDITION or viewerCode~='') and os.clock()-feedAt>=3 then local success,message=refresh(); if not success then queryStatus='Finder: '..tostring(message) end end
-                autoJoinBeast()
             end)
             if not ok then reportStatus='BCAST: '..tostring(err);queryStatus=tostring(err);warn('Tenshi broadcast: '..tostring(err)) end
             task.wait(1)
@@ -2374,8 +2296,8 @@ end
 
 
 local function run()
-    -- Create the Finder menu before loading game-specific modules.
-    -- This keeps the launcher visible even if the game's internal schema changes.
+    -- Build the Finder UI before loading game-specific modules. This way
+    -- a missing or changed game module cannot prevent the menu from appearing.
     local latestEntries={}
     local latestMetadata=nil
     local lastScan=0
