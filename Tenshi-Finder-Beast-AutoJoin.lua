@@ -920,12 +920,7 @@ local function createFinder(D)
                         queryStatus='Auto Join: server #'..tostring(autoJoinCandidateIndex-1)..' unavailable; trying next'
                         return
                     end
-                    local shared,shareError=report()
-                    if not shared then
-                        autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
-                        queryStatus='Auto Join: report failed; trying next server'
-                        return
-                    end
+                    -- Skip a blocking report POST here; Finder heartbeat already shares this server.
                     local joinExpiry=math.min(tonumber(target.expiresAt) or math.huge,tonumber(claim.expiresAt) or math.huge)
                     if now>=joinExpiry then
                         autoJoinCandidateIndex+=1;autoJoinRetryRequested=true;feedAt=0
@@ -956,7 +951,7 @@ local function createFinder(D)
                 end
                 autoJoinBusy=false
             end
-            task.wait(1.2)
+            task.wait(0.1)
         end
     end)
 
