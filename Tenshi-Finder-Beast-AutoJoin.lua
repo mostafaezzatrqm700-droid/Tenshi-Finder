@@ -714,7 +714,7 @@ local function createFinder(D)
         autoJoinEnabled=not autoJoinEnabled
         autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
         paintAutoJoin()
-        queryStatus=autoJoinEnabled and 'Auto Join enabled: checking the top 5 servers' or 'Auto Join disabled'
+        queryStatus=autoJoinEnabled and 'Auto Join enabled: checking the top 3 servers' or 'Auto Join disabled'
     end)
     local publicBroadcastConfig=nil
     local featureConfig=nil
@@ -849,7 +849,7 @@ local function createFinder(D)
         queryStatus=data.tier=='premium' and string.format('PREMIUM | %d servers | %d reporters',data.servers or 0,data.participants or 0) or 'Updated'
         return true
     end
-    -- Auto Join tries no more than the five highest-value eligible reports.
+    -- Auto Join tries no more than the three highest-value eligible reports.
     -- Reservation failures and asynchronous teleport failures advance to the next candidate.
     task.spawn(function()
         while active do
@@ -887,12 +887,12 @@ local function createFinder(D)
                             if ar~=br then return ar>br end
                             return tostring(a.jobId)<tostring(b.jobId)
                         end)
-                        for i=1,math.min(5,#candidates) do autoJoinCandidates[i]=candidates[i] end
+                        for i=1,math.min(3,#candidates) do autoJoinCandidates[i]=candidates[i] end
                         autoJoinCandidateIndex=1
                         autoJoinRetryRequested=false
                     end
                     if autoJoinCandidateIndex>#autoJoinCandidates then
-                        queryStatus='Auto Join: all top 5 attempts failed'
+                        queryStatus='Auto Join: all top 3 attempts failed'
                         autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
                         feedAt=0
                         return
@@ -2276,7 +2276,7 @@ local function createFinder(D)
             if autoJoinEnabled and autoJoinCandidateIndex<=#autoJoinCandidates then
                 autoJoinCandidateIndex+=1
                 autoJoinRetryRequested=true
-                queryStatus='Auto Join: teleport failed; trying next of top 5'
+                queryStatus='Auto Join: teleport failed; trying next of top 3'
             else
                 queryStatus='Join failed: '..tostring(message)
             end
