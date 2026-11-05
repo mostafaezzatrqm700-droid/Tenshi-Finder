@@ -709,106 +709,8 @@ local function createFinder(D)
         if not active then return end
         autoJoinEnabled=not autoJoinEnabled
         paintAutoJoin()
-        queryStatus=autoJoinEnabled and 'Auto Join enabled: searching for the highest egg' or 'Auto Join disabled'
+        queryStatus=autoJoinEnabled and 'Auto Join enabled: searching for eggs >= $1B/s' or 'Auto Join disabled'
     end)
-    local randomJoin=D.make('TextButton',{Name='RandomServer',Text='JOIN RANDOM SERVER',Position=UDim2.new(0,10,1,-98),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(195,38,55),TextColor3=Color3.new(1,1,1),TextSize=12,Font=Enum.Font.GothamBold},panel)
-    D.make('UICorner',{CornerRadius=UDim.new(0,6)},randomJoin)
-    randomJoin.TextScaled=true;randomJoin.TextWrapped=false
-    D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},randomJoin)
-    local randomBusy=false
-    local randomRetryAt=0
-    local recentRandom={}
-    local recentRandomPath='tenshi_beta_random_recent_v1.json'
-    pcall(function()
-        if type(readfile)=='function' then
-            local saved=Http:JSONDecode(readfile(recentRandomPath))
-            if type(saved)=='table' then for _,id in ipairs(saved) do if type(id)=='string' and #recentRandom<20 then recentRandom[#recentRandom+1]=id end end end
-        end
-    end)
-    local function rememberRandom(id)
-        for i=#recentRandom,1,-1 do if recentRandom[i]==id then table.remove(recentRandom,i) end end
-        recentRandom[#recentRandom+1]=id
-        while #recentRandom>20 do table.remove(recentRandom,1) end
-        if type(writefile)=='function' then pcall(function() writefile(recentRandomPath,Http:JSONEncode(recentRandom)) end) end
-    end
-    local function friendServerExclusions()
-        local ok,friends=pcall(function() return D.player:GetFriendsOnlineAsync(200) end)
-        if not ok then ok,friends=pcall(function() return D.player:GetFriendsOnline(200) end) end
-        if not ok or type(friends)~='table' then error('Cannot check friend servers; try again') end
-        local excluded={[game.JobId]=true}
-        for _,friend in ipairs(friends) do
-            local place=tonumber(friend.PlaceId or friend.placeId)
-            local id=friend.GameId or friend.gameId or friend.JobId or friend.jobId
-            if type(id)=='string' and id~='' then
-                excluded[id]=true
-            elseif place==game.PlaceId then
-                local success,current,_,friendPlace,friendJob=pcall(function() return Teleports:GetPlayerPlaceInstanceAsync(friend.VisitorId or friend.visitorId) end)
-                if success and tonumber(friendPlace)==game.PlaceId and type(friendJob)=='string' and friendJob~='' then excluded[friendJob]=true
-                elseif success and current==true then excluded[game.JobId]=true
-                else error('Friend server location unavailable; try again') end
-            end
-        end
-        return excluded
-    end
-    randomJoin.Activated:Connect(function()
-        if randomBusy or joining or os.clock()<randomRetryAt then return end
-        D.randomAttempt=(D.randomAttempt or 0)+1
-        local attempt=D.randomAttempt
-        randomBusy=true;joining=true;randomJoin.Active=false;randomJoin.AutoButtonColor=false;randomJoin.Text='SEARCHING...'
-        task.spawn(function()
-            local ok,err=pcall(function()
-                local excluded=friendServerExclusions()
-                local candidates,seen={},{}
-                if not config then error('Finder connection not ready; try again') end
-                local response=requestFn({Url=config.endpoint..'/v1/random-servers',Method='GET',Headers={['X-NYX-Room']=config.roomKey},Timeout=10})
-                local code=type(response)=='table' and tonumber(response.StatusCode or response.Status)
-                local parsed,data=pcall(Http.JSONDecode,Http,type(response)=='table' and response.Body or '')
-                if code~=200 then
-                    local seconds=parsed and type(data)=='table' and tonumber(data.retryAfterSeconds) or 30
-                    randomRetryAt=os.clock()+math.max(1,seconds or 30)
-                    error('Roblox server list busy; wait '..tostring(math.ceil(seconds or 30))..'s')
-                end
-                if not parsed or type(data)~='table' or type(data.data)~='table' then error('Invalid server list') end
-                for _,server in ipairs(data.data) do
-                    local playing,maxPlayers=tonumber(server.playing),tonumber(server.maxPlayers)
-                    if type(server.id)=='string' and not seen[server.id] and not excluded[server.id] and playing and maxPlayers and playing<maxPlayers then
-                        candidates[#candidates+1]=server.id;seen[server.id]=true
-                    end
-                end
-                local fresh={}
-                for _,id in ipairs(candidates) do if not table.find(recentRandom,id) then fresh[#fresh+1]=id end end
-                if #fresh>0 then candidates=fresh end
-                if #candidates==0 then error('No available random server without known friends; try again') end
-                if not active then return end
-                local target=candidates[math.random(1,#candidates)]
-                D.saveGuiBeforeTeleport()
-                if type(D.flushReport)=='function' then pcall(D.flushReport) end
-                if not active then return end
-                randomJoin.Text='JOINING...'
-                rememberRandom(game.JobId);rememberRandom(target)
-                D.stopFarm()
-                Teleports:TeleportToPlaceInstance(game.PlaceId,target,D.player)
-            end)
-            if not ok then
-                randomBusy=false;joining=false;randomJoin.Active=true;randomJoin.AutoButtonColor=true;randomJoin.Text='TRY AGAIN'
-                local seconds=math.ceil(math.max(0,randomRetryAt-os.clock()))
-                if seconds>0 then
-                    randomJoin.Text='WAIT '..tostring(seconds)..'s';randomJoin.Active=false;randomJoin.AutoButtonColor=false
-                    task.delay(seconds,function() if randomJoin.Parent then randomJoin.Active=true;randomJoin.AutoButtonColor=true;randomJoin.Text='TRY AGAIN' end end)
-                else randomRetryAt=os.clock()+0.75 end
-                queryStatus='Random server: '..tostring(err)
-                pcall(function() game:GetService('StarterGui'):SetCore('SendNotification',{Title='Random server',Text=queryStatus,Duration=7}) end)
-                return
-            end
-            task.delay(5,function()
-                if not active or D.randomAttempt~=attempt or not randomBusy then return end
-                D.randomAttempt+=1;randomBusy=false;joining=false
-                randomRetryAt=os.clock()+0.75
-                if randomJoin.Parent then randomJoin.Active=true;randomJoin.AutoButtonColor=true;randomJoin.Text='TRY AGAIN' end
-            end)
-        end)
-    end)
-
     local publicBroadcastConfig=nil
     local featureConfig=nil
     local featureSending=false
@@ -920,7 +822,7 @@ local function createFinder(D)
     D.flushReport=report
     local function refresh()
         local epoch=queryEpoch
-        local query='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId..'&limit='..(viewerCode~='' and '10&tier=premium' or '30&tier=public')..'&offset=0&minRate='..tostring(minRate)..'&minRank='..tostring(minRank)
+        local query='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId..'&limit=10'..(viewerCode~='' and '&tier=premium' or '&tier=public')..'&offset=0&minRate='..tostring(minRate)..'&minRank='..tostring(minRank)
         local requestedCycle=cycleInfo()
         if requestedCycle then query=query..'&cycleRemainingMs='..tostring(math.max(0,requestedCycle.remaining*1000))..'&cycleId='..tostring(requestedCycle.resetAt) end
         if othersOnly then query=query..'&onlyJob='..Http:UrlEncode(game.JobId) end
@@ -932,7 +834,7 @@ local function createFinder(D)
         end
         unlock.Text=data.tier=='premium' and 'PREMIUM ON' or 'PREMIUM'
         nextOffset=tonumber(data.nextOffset)
-        page.Text=data.tier=='premium' and 'GLOBAL TOP 10' or 'TOP 30'
+        page.Text=data.tier=='premium' and 'GLOBAL TOP 10' or 'TOP 10'
         clockOffset=(tonumber(data.serverTime) or os.time()*1000)/1000-os.clock()
         localStates={}
         for _,entry in ipairs(data.localStates or {}) do localStates[entry.key]=entry end
@@ -970,14 +872,14 @@ local function createFinder(D)
                         local place=tonumber(entry.placeId)
                         local expiry=tonumber(entry.expiresAt)
                         local validEntry=job~='' and job~=game.JobId and place and place>0
-                            and expiry and expiry>now and rate and rate>0
+                            and expiry and expiry>now and rate and rate>=1000000000
                             and entry.uid~=nil and entry.full~=true and entry.unavailable~=true
                             and entry.takenConfirmed~=true
                             and D.publicEntryAllowed(entry,now)
                         if validEntry and (not best or rate>tonumber(best.rate or 0)) then best=entry end
                     end
                     if not best then
-                        queryStatus='Auto Join: no valid egg reports yet'
+                        queryStatus='Auto Join: no available egg at or above $1B/s'
                         return
                     end
                     local key=tostring(best.placeId)..':'..tostring(best.jobId)..':'..tostring(best.uid)
@@ -1013,6 +915,7 @@ local function createFinder(D)
                     end
                     queryStatus='Auto Join: joining best egg server'
                     D.saveGuiBeforeTeleport()
+                    queueTenshiAfterTeleport()
                     D.stopFarm()
                     Teleports:TeleportToPlaceInstance(best.placeId,best.jobId,D.player)
                 end)
@@ -1199,7 +1102,7 @@ local function createFinder(D)
         ["MIN RARITY: Secret"]='varesco_b04',
         ["MIN RARITY: Cosmic"]='varesco_b03',
         ["PREMIUM ON"]='varesco_b09',
-        ["JOIN RANDOM SERVER"]='varesco_b10',
+        ["REMOVED RANDOM JOIN"]='varesco_b10',
         ["MIN RARITY: Mythic"]='varesco_b02',
         ["TRY AGAIN"]='varesco_b14',
         ["ALL SERVERS"]='varesco_b00',
@@ -2149,6 +2052,7 @@ local function createFinder(D)
                     queryStatus='Reset reached; refreshing';return
                 end
                 D.saveGuiBeforeTeleport()
+                queueTenshiAfterTeleport()
                 D.stopFarm()
                 local ok,err=pcall(function() Teleports:TeleportToPlaceInstance(entry.placeId,entry.jobId,D.player) end)
                 if not ok then queryStatus='Join failed: '..tostring(err); joining=false;joiningKey=nil end
@@ -2395,6 +2299,14 @@ local function createFinder(D)
     end)
 end
 
+
+local function queueTenshiAfterTeleport()
+    local queueFn=queue_on_teleport
+    if type(queueFn)~='function' and type(syn)=='table' then queueFn=syn.queue_on_teleport end
+    if type(queueFn)=='function' then
+        pcall(queueFn,'loadstring(game:HttpGet("https://raw.githubusercontent.com/mostafaezzatrqm700-droid/Tenshi-Finder/main/Tenshi-Finder-Beast-AutoJoin.lua"))()')
+    end
+end
 
 local function run()
     local EggState=module('Client.EggState')
