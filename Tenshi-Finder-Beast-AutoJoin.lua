@@ -2283,6 +2283,33 @@ local function createFinder(D)
         end
     end)
     D.gui.Destroying:Connect(function() active=false; failed:Disconnect();if localHighlight then localHighlight:Destroy() end end)
+    -- Refresh the server list every 0.25s, with a short faster burst after each detected reset.
+    task.spawn(function()
+        local lastObservedResetAt=nil
+        local resetRefreshesRemaining=0
+        local lastRefreshAttempt=-math.huge
+        while active do
+            local now=os.clock()
+            local cycle=cycleInfo()
+            if cycle and type(cycle.resetAt)=='number' then
+                if lastObservedResetAt and cycle.resetAt>lastObservedResetAt+1000 then
+                    resetRefreshesRemaining=8
+                    lastRefreshAttempt=-math.huge
+                    feedAt=0
+                    queryStatus='Reset detected: rapid server refresh'
+                end
+                lastObservedResetAt=cycle.resetAt
+            end
+            local refreshInterval=resetRefreshesRemaining>0 and 0.15 or 0.25
+            if config and not networkBusy and (not PREMIUM_EDITION or viewerCode~='') and now-lastRefreshAttempt>=refreshInterval then
+                lastRefreshAttempt=now
+                local success,message=refresh()
+                if resetRefreshesRemaining>0 then resetRefreshesRemaining-=1 end
+                if not success then queryStatus='Finder: '..tostring(message) end
+            end
+            task.wait(0.05)
+        end
+    end)
     task.spawn(function()
         local lastReport=-math.huge
         local lastPeakSignature=nil
@@ -2300,7 +2327,6 @@ local function createFinder(D)
                     reportStatus=message
                     if not success then warn('Tenshi broadcast: '..tostring(message)) end
                 end
-                if (not PREMIUM_EDITION or viewerCode~='') and os.clock()-feedAt>=3 then local success,message=refresh(); if not success then queryStatus='Finder: '..tostring(message) end end
             end)
             if not ok then reportStatus='BCAST: '..tostring(err);queryStatus=tostring(err);warn('Tenshi broadcast: '..tostring(err)) end
             task.wait(1)
