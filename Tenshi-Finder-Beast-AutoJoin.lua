@@ -556,15 +556,16 @@ local function createFinder(D)
         D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},button)
     end
     local function styleScope()
-        scope.BackgroundColor3=othersOnly and Color3.fromRGB(67,70,80) or Color3.fromRGB(45,130,75)
-        myScope.BackgroundColor3=othersOnly and Color3.fromRGB(45,130,75) or Color3.fromRGB(67,70,80)
+        scope.BackgroundTransparency=0;myScope.BackgroundTransparency=0
+        scope.BackgroundColor3=othersOnly and Color3.fromRGB(48,50,58) or Color3.fromRGB(35,105,65)
+        myScope.BackgroundColor3=othersOnly and Color3.fromRGB(35,105,65) or Color3.fromRGB(48,50,58)
         scope.TextColor3=Color3.new(1,1,1);myScope.TextColor3=Color3.new(1,1,1)
     end
     local requestScopeRender
     local function setScope(myServer)
         if othersOnly==myServer then return end
         othersOnly=myServer;styleScope()
-        page.Text=othersOnly and 'LOCAL EGGS' or PREMIUM_EDITION and 'GLOBAL TOP 10' or 'TOP 30'
+        page.Text=othersOnly and 'LOCAL EGGS' or 'TOP 10'
         queryEpoch+=1;pageOffset=0;feedAt=-math.huge;task.defer(saveSettings)
         if requestScopeRender then requestScopeRender() end
     end
@@ -697,7 +698,7 @@ local function createFinder(D)
     -- Beast Auto Join: selects the highest-income valid egg from the shared Finder feed.
     local autoJoinEnabled=false
     local autoJoinBusy=false
-    local autoJoinButton=D.make('TextButton',{Name='BeastAutoJoin',Text='BEAST AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(35,105,75),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
+    local autoJoinButton=D.make('TextButton',{Name='BeastAutoJoin',Text='BEAST AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-98),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(35,105,75),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
     autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
     D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},autoJoinButton)
@@ -1102,7 +1103,6 @@ local function createFinder(D)
         ["MIN RARITY: Secret"]='varesco_b04',
         ["MIN RARITY: Cosmic"]='varesco_b03',
         ["PREMIUM ON"]='varesco_b09',
-        ["REMOVED RANDOM JOIN"]='varesco_b10',
         ["MIN RARITY: Mythic"]='varesco_b02',
         ["TRY AGAIN"]='varesco_b14',
         ["ALL SERVERS"]='varesco_b00',
@@ -1135,8 +1135,8 @@ local function createFinder(D)
         refreshFont()
     end
     -- Bottom options use crisp native rounded text instead of bitmap captions.
-    for _,button in ipairs({scope,myScope,rarity,unlock,refreshButton,randomJoin,sizeMinus,sizePlus}) do styleRaisedButton(button) end
-    for _,button in ipairs({scope,myScope,rarity,unlock,randomJoin}) do
+    for _,button in ipairs({scope,myScope,rarity,unlock,refreshButton,sizeMinus,sizePlus}) do styleRaisedButton(button) end
+    for _,button in ipairs({scope,myScope,rarity,unlock}) do
         button.Font=Enum.Font.FredokaOne
         local caption=button:FindFirstChild('RaisedCaption')
         if caption then
@@ -1852,7 +1852,7 @@ local function createFinder(D)
 
         end
             table.sort(source,function(a,b) if a.rate~=b.rate then return a.rate>b.rate end; return a.key<b.key end)
-            local limit=PREMIUM_EDITION and 10 or 30
+            local limit=10
             while #source>limit do source[#source]=nil end
             for i,e in ipairs(source) do e.displayRank=i end
         for priorityRank,entry in ipairs(source) do
@@ -2247,11 +2247,6 @@ local function createFinder(D)
     local failed=Teleports.TeleportInitFailed:Connect(function(who,_,message)
         if who==D.player then
             joining=false;queryStatus='Join failed: '..tostring(message)
-            if randomBusy then
-                D.randomAttempt=(D.randomAttempt or 0)+1;randomBusy=false
-                randomRetryAt=os.clock()+0.75
-                if randomJoin.Parent then randomJoin.Active=true;randomJoin.AutoButtonColor=true;randomJoin.Text='TRY AGAIN' end
-            end
         end
     end)
     D.gui.Destroying:Connect(function() active=false; failed:Disconnect();if localHighlight then localHighlight:Destroy() end end)
