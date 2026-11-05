@@ -942,8 +942,21 @@ local function createFinder(D)
                     if not teleported then
                         joining=false
                         autoJoinCandidateIndex+=1;autoJoinRetryRequested=true
-                        queryStatus='Auto Join: teleport failed; trying next server'
+                        queryStatus='Auto Join: teleport call failed; trying next server'
                         warn('Tenshi Beast Auto Join teleport:',teleportError)
+                    else
+                        -- Prevent a silent teleport request from leaving Auto Join stuck forever.
+                        local attemptIndex=autoJoinCandidateIndex
+                        task.delay(20,function()
+                            if active and joining and autoJoinEnabled and autoJoinCandidateIndex==attemptIndex then
+                                joining=false
+                                autoJoinCandidateIndex+=1
+                                autoJoinRetryRequested=true
+                                feedAt=0
+                                queryStatus='Auto Join: teleport timed out; trying next server'
+                                warn('Tenshi Beast Auto Join: teleport timed out for candidate '..tostring(attemptIndex))
+                            end
+                        end)
                     end
                 end)
                 if not ok then
