@@ -549,8 +549,8 @@ local function createFinder(D)
     discordSubtitle.TextScaled=true;discordSubtitle.TextWrapped=false;discordSubtitle.Visible=true
     D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=11},discordSubtitle)
     local page={Text=''}
-    local scope=D.make('TextButton',{Name='AllServers',Text='ALL SERVERS',Position=UDim2.new(0,10,1,-136),Size=UDim2.new(0.5,-15,0,34),BackgroundColor3=Color3.fromRGB(67,70,80),TextColor3=Color3.new(1,1,1),TextSize=14},panel)
-    local myScope=D.make('TextButton',{Name='MyServer',Text='MY SERVER',Position=UDim2.new(0.5,5,1,-136),Size=UDim2.new(0.5,-15,0,34),BackgroundColor3=Color3.fromRGB(67,70,80),TextColor3=Color3.new(1,1,1),TextSize=14},panel)
+    local scope=D.make('TextButton',{Name='AllServers',Text='ALL SERVERS',Position=UDim2.new(0,10,1,-182),Size=UDim2.new(0.5,-15,0,34),BackgroundColor3=Color3.fromRGB(67,70,80),TextColor3=Color3.new(1,1,1),TextSize=14},panel)
+    local myScope=D.make('TextButton',{Name='MyServer',Text='MY SERVER',Position=UDim2.new(0.5,5,1,-182),Size=UDim2.new(0.5,-15,0,34),BackgroundColor3=Color3.fromRGB(67,70,80),TextColor3=Color3.new(1,1,1),TextSize=14},panel)
     for _,button in ipairs({scope,myScope}) do
         button.TextScaled=true;button.TextWrapped=false
         D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},button)
@@ -580,14 +580,14 @@ local function createFinder(D)
         local colors={Mythic='#FF4B55',Cosmic='#BE55FF',Secret='#FFFFFF',Eternal='#DACAEC',Divine='#FFCD37',Any='#FFFFFF'}
         return 'MIN RARITY: <font color="'..colors[name]..'">'..name..'</font>'
     end
-    local rarity=D.make('TextButton',{Text=rarityButtonText(),RichText=true,Position=UDim2.new(0,10,1,-96),Size=UDim2.new(0.60,-15,0,36),BackgroundColor3=Color3.fromRGB(45,90,175),TextColor3=Color3.new(1,1,1),TextSize=12},panel)
+    local rarity=D.make('TextButton',{Text=rarityButtonText(),RichText=true,Position=UDim2.new(0,10,1,-142),Size=UDim2.new(0.60,-15,0,36),BackgroundColor3=Color3.fromRGB(45,90,175),TextColor3=Color3.new(1,1,1),TextSize=12},panel)
     rarity.Activated:Connect(function()
         rarityIndex=rarityIndex%#rarityOptions+1;minRank=rarityOptions[rarityIndex].rank
         rarity.Text=rarityButtonText()
         queryEpoch+=1;feed={};pageOffset=0;feedAt=-math.huge;saveSettings()
     end)
     local access=PREMIUM_EDITION and AUTO_KEY=='' and D.make('TextBox',{Text='',PlaceholderText='PREMIUM code (top 10)',Position=UDim2.new(0,10,1,-44),Size=UDim2.new(1,-20,0,34),ClearTextOnFocus=false,BackgroundColor3=Color3.fromRGB(45,48,60),TextColor3=Color3.new(1,1,1),TextSize=12},panel) or {Text=''} 
-    local unlock=D.make('TextButton',{Text='PREMIUM',Position=UDim2.new(0.60,5,1,-96),Size=UDim2.new(0.40,-15,0,36),BackgroundColor3=Color3.fromRGB(210,170,35),TextColor3=Color3.new(1,1,1),TextSize=12},panel)
+    local unlock=D.make('TextButton',{Text='PREMIUM',Position=UDim2.new(0.60,5,1,-142),Size=UDim2.new(0.40,-15,0,36),BackgroundColor3=Color3.fromRGB(210,170,35),TextColor3=Color3.new(1,1,1),TextSize=12},panel)
     access.Visible=PREMIUM_EDITION and AUTO_KEY==''
     if PREMIUM_EDITION and AUTO_KEY~='' then
         unlock.Visible=false
@@ -697,7 +697,7 @@ local function createFinder(D)
     -- Beast Auto Join: selects the highest-income valid egg from the shared Finder feed.
     local autoJoinEnabled=false
     local autoJoinBusy=false
-    local autoJoinButton=D.make('TextButton',{Name='BeastAutoJoin',Text='BEAST AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-98),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(35,105,75),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
+    local autoJoinButton=D.make('TextButton',{Name='BeastAutoJoin',Text='BEAST AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(35,105,75),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
     autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
     D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},autoJoinButton)
@@ -711,7 +711,7 @@ local function createFinder(D)
         paintAutoJoin()
         queryStatus=autoJoinEnabled and 'Auto Join enabled: searching for the highest egg' or 'Auto Join disabled'
     end)
-    local randomJoin=D.make('TextButton',{Name='RandomServer',Text='JOIN RANDOM SERVER',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(195,38,55),TextColor3=Color3.new(1,1,1),TextSize=12,Font=Enum.Font.GothamBold},panel)
+    local randomJoin=D.make('TextButton',{Name='RandomServer',Text='JOIN RANDOM SERVER',Position=UDim2.new(0,10,1,-98),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(195,38,55),TextColor3=Color3.new(1,1,1),TextSize=12,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},randomJoin)
     randomJoin.TextScaled=true;randomJoin.TextWrapped=false
     D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},randomJoin)
