@@ -48,9 +48,8 @@ function cleanEgg(value) {
     source: value.source === 'event' ? 'event' : 'field'
   };
 }
-function createServer({ roomKey, premiumKey, now = Date.now } = {}) {
+function createServer({ roomKey, now = Date.now } = {}) {
   if (typeof roomKey !== 'string' || roomKey.length < 32) throw new Error('roomKey must be at least 32 characters');
-  if (typeof premiumKey !== 'string' || premiumKey.length < 24) throw new Error('premiumKey must be at least 24 characters');
 
   const snapshots = new Map();
   const reservations = new Map();
@@ -143,8 +142,6 @@ function createServer({ roomKey, premiumKey, now = Date.now } = {}) {
         if (!limited(req, 'eggs', 360)) return send(res, 429, { error: 'Too many requests' });
         const premium = url.searchParams.get('tier') === 'premium' ||
           Boolean(req.headers['x-nyx-viewer']);
-        if (premium && !safeEqual(req.headers['x-nyx-viewer'], premiumKey))
-          return send(res, 401, { error: 'Premium access code required' });
         const placeId = Number(url.searchParams.get('placeId') || GAME_PLACE);
         if (placeId !== GAME_PLACE) return send(res, 400, { error: 'Unsupported place' });
         const minRate = Math.max(0, Number(url.searchParams.get('minRate')) || 0);
@@ -198,6 +195,6 @@ if (require.main === module) {
   const configPath = process.argv[2] || path.join(__dirname, 'host-config.json');
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   const port = Number(config.port) || 32487;
-  createServer({ roomKey: config.roomKey, premiumKey: config.premiumKey })
+  createServer({ roomKey: config.roomKey })
     .listen(port, '0.0.0.0', () => process.stdout.write('Independent Finder API listening on ' + port + '\n'));
 }
