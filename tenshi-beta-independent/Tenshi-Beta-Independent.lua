@@ -1532,7 +1532,7 @@ end)) then return false,'Finder configuration unavailable' end
         end
         return true
     end
-    local function headers(read) return {['Content-Type']='application/json',['X-NYX-Room']=config.roomKey,['X-NYX-Viewer']=read and viewerCode~='' and viewerCode or nil} end
+    local function headers(read) return {['Content-Type']='application/json'} end
     local broadcastInterval=20
     local function snapshot()
         local eggs={}
