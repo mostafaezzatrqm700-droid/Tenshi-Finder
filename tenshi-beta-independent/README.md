@@ -1,15 +1,20 @@
 # Independent Tenshi-style Finder
 
-This folder is an isolated implementation track. It does not modify the existing UNKNOWN key loader.
+This is an isolated implementation track. It does not modify the existing UNKNOWN key loader or the original developer's service.
 
 ## Files
 - `Tenshi-Beta-Independent.lua`: client/UI and game-side egg scanner.
 - `server.cjs`: independent HTTP API.
-- `config.json`: public client configuration template; replace its placeholders after deploying the API.
+- `config.json`: public client configuration template; set the deployed API origin and room credential after deployment.
 - `host-config.example.json`: private server configuration template.
 
-## Current compatibility status
-The available readable source used to reconstruct the UI is archived public v0.4.3 / UI18, not the packed Beta 0.6 source. The client therefore preserves the visible finder workflow and API shape that can be verified from that source, but it is **not yet a verified 1:1 Beta 0.6 rebuild**. Beta 0.6-only changes still need to be compared and ported.
+## Compatibility status
+The available readable source used to reconstruct the UI is archived public v0.4.3 / UI18, not the packed Beta 0.6 source. This is therefore not yet a verified 1:1 Beta 0.6 rebuild. Beta 0.6-only changes still need to be compared and ported.
+
+## Premium behavior
+Premium is enabled locally in this independent client. There is **no Premium access key, no Premium code entry, and no Premium-key validation** in this implementation. Premium feed requests receive the independent service's top-10 tier.
+
+The server still uses a separate `roomKey` for basic API request authorization and abuse control. This is not a Premium unlock key and is not shown as a user-entered Premium code. Because a client-side credential can be extracted, enforce host-side rate limits and rotate it if abused.
 
 ## API routes
 - `GET /health`
@@ -20,14 +25,10 @@ The available readable source used to reconstruct the UI is archived public v0.4
 ## Run the Node backend
 1. Copy `host-config.example.json` to `host-config.json`.
 2. Set `roomKey` to a random string of at least 32 characters.
-3. Set a different `premiumKey` of at least 24 characters.
-4. Run `npm start` with Node.js 20 or newer.
-5. Set the public API origin and the same `roomKey` in `config.json`.
+3. Run `npm start` with Node.js 20 or newer.
+4. Set the public API origin and matching `roomKey` in the client `config.json`.
 
-Do not commit `host-config.json`. The client needs the room credential to submit sightings; treat it as a shared client credential, not as a durable secret. Apply rate limits at the host and rotate it if it is abused.
-
-## Premium
-The client exposes its Premium access UI. Enter the `premiumKey` configured on the independent backend. The server enforces Premium access and the global top-10 tier; changing a local UI flag does not grant server-side access.
+Do not commit `host-config.json` or real credentials.
 
 ## Testing
-The code has been committed but has not yet been run inside Roblox or deployed to a live host. Verify /health, reporting, public feed, Premium feed, reservations, and teleport behavior before treating it as production-ready.
+The code has not yet been run inside Roblox or deployed to a live host. Verify `/health`, reporting, Premium feed, reservations, and teleport behavior before treating it as production-ready.
