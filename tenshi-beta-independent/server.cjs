@@ -48,8 +48,7 @@ function cleanEgg(value) {
     source: value.source === 'event' ? 'event' : 'field'
   };
 }
-function createServer({ roomKey, now = Date.now } = {}) {
-  if (typeof roomKey !== 'string' || roomKey.length < 32) throw new Error('roomKey must be at least 32 characters');
+function createServer({ now = Date.now } = {}) {
 
   const snapshots = new Map();
   const reservations = new Map();
@@ -63,9 +62,7 @@ function createServer({ roomKey, now = Date.now } = {}) {
     });
     res.end(JSON.stringify(body));
   }
-  function authorized(req) {
-    return safeEqual(req.headers['x-nyx-room'], roomKey);
-  }
+  function authorized(req) { return true; }
   function clean() {
     const t = now();
     for (const [key, snap] of snapshots) if (snap.expiresAt <= t) snapshots.delete(key);
@@ -195,6 +192,6 @@ if (require.main === module) {
   const configPath = process.argv[2] || path.join(__dirname, 'host-config.json');
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   const port = Number(config.port) || 32487;
-  createServer({ roomKey: config.roomKey })
+  createServer({})
     .listen(port, '0.0.0.0', () => process.stdout.write('Independent Finder API listening on ' + port + '\n'));
 }
