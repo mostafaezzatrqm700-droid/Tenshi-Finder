@@ -1,7 +1,6 @@
 'use strict';
 
 const http = require('node:http');
-const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -9,13 +8,6 @@ const GAME_PLACE = 107778070777162;
 const TTL_MS = 90_000;
 const MAX_BODY = 96 * 1024;
 
-function sha(value) {
-  return crypto.createHash('sha256').update(String(value || '')).digest();
-}
-function safeEqual(a, b) {
-  const left = sha(a), right = sha(b);
-  return crypto.timingSafeEqual(left, right);
-}
 function validId(value) {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{8,160}$/.test(value);
 }
@@ -62,7 +54,6 @@ function createServer({ now = Date.now } = {}) {
     });
     res.end(JSON.stringify(body));
   }
-  function authorized(req) { return true; }
   function clean() {
     const t = now();
     for (const [key, snap] of snapshots) if (snap.expiresAt <= t) snapshots.delete(key);
@@ -107,7 +98,6 @@ function createServer({ now = Date.now } = {}) {
       if (req.method === 'GET' && url.pathname === '/health') {
         return send(res, 200, { ok: true, service: 'independent-finder', version: '0.1.0' });
       }
-      if (!authorized(req)) return send(res, 401, { error: 'Room key required' });
       if (req.method === 'POST' && url.pathname === '/v1/report') {
         if (!limited(req, 'report', 90)) return send(res, 429, { error: 'Too many reports' });
         if (!String(req.headers['content-type'] || '').includes('application/json'))
