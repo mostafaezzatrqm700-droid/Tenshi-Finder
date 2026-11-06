@@ -256,7 +256,7 @@ local function createFinder(D)
     local minRate,minRank=0,6
     local joining=false
     local localHighlight
-    local viewerCode=PREMIUM_EDITION and AUTO_KEY or ''
+    local viewerCode=PREMIUM_EDITION and 'LOCAL_PREMIUM' or ''
     local pageOffset,nextOffset=0,nil
     local queryEpoch=0
     local settingsPath=PREMIUM_EDITION and 'tenshi_premium_ui.json' or 'tenshi_beta_ui.json'
@@ -581,9 +581,8 @@ local function createFinder(D)
             return
         end
         pageOffset=0
-        if viewerCode~='' then viewerCode=''; feed={}; feedAt=-math.huge; unlock.Text='PREMIUM'; queryStatus='Public Finder'; return end
-        viewerCode=access.Text:match('^%s*(.-)%s*$'); access.Text=''; feed={}; feedAt=-math.huge
-        queryStatus='Checking access code'
+        if viewerCode=='' then viewerCode='LOCAL_PREMIUM' end
+        feed={}; feedAt=-math.huge; unlock.Text='PREMIUM ON'; queryStatus='Premium enabled'
     end)
     local refreshButton=D.make('TextButton',{Text='REFRESH',Position=UDim2.fromOffset(10,150),Size=UDim2.new(1,-20,0,30),BackgroundColor3=Color3.fromRGB(28,105,58),TextColor3=Color3.new(1,1,1),TextSize=14},panel)
     local resetTimer=D.label(refreshButton,'RESET --:--',UDim2.fromOffset(8,0),UDim2.new(0.28,-8,1,0),Color3.fromRGB(230,245,255),13)
@@ -679,7 +678,848 @@ local function createFinder(D)
     local function loadConfig()
         local data,err=network('https://raw.githubusercontent.com/mostafaezzatrqm700-droid/Tenshi-Finder/tenshi-beta-independent/tenshi-beta-independent/config.json?ts='..os.time(),'GET')
         if not data then return false,err end
-        if type(data.endpoint)~='string' or not data.endpoint:match('^https://[%w%.%-]+$') or type(data.roomKey)~='string' then return false,'Finder configuration unavailable' end
+        if type(data.endpoint)~='string' or not data.endpoint:match('^https://[%w%.%-]+
+        config=data; configAt=os.clock()
+        if false and type(writefile)=='function' then
+            local asset=getcustomasset or getsynasset
+            if type(asset)=='function' then
+                local bytes=network(config.endpoint..'/assets/finder.jpg','GET',nil,nil,true)
+                if bytes then
+                    pcall(function() writefile('nyx_finder_icon_v19.jpg',bytes);open.Image=asset('nyx_finder_icon_v19.jpg');fallback.Visible=false end)
+                end
+            end
+        end
+        return true
+    end
+    local function headers(read) return {['Content-Type']='application/json'} end
+    local broadcastInterval=20
+    local function snapshot()
+        local eggs={}
+        for _,entry in ipairs(D.entries()) do
+            if not entry.unresolved and entry.uid and entry.rate and entry.rate>0 then
+                eggs[#eggs+1]={uid=tostring(entry.uid),name=entry.name,category=entry.category,rarity=entry.rarity,rank=entry.tier,rate=entry.rate,scale=entry.scale,weight=entry.weight,icon=entry.icon,area=entry.areaKey or entry.area,mutations=entry.mutationText or (entry.traitsKnown==false and 'UNKNOWN' or ''),traitsKnown=entry.traitsKnown~=false,estimated=entry.estimated==true or entry.unmutatedRate~=nil or entry.scaleFromModel==true,visualId=entry.visualId==true,source=entry.isEvent and 'event' or 'field'}
+            end
+        end
+        table.sort(eggs,function(a,b) return a.rate>b.rate end)
+        while #eggs>15 do eggs[#eggs]=nil end
+        return eggs
+    end
+    local function report()
+        if game.JobId=='' then return false,'No live server ID' end
+        local data,err=network(config.endpoint..'/v1/report','POST',Http:JSONEncode({placeId=game.PlaceId,jobId=game.JobId,reporterId=reporterId,eggs=snapshot()}),headers())
+        return data and data.ok==true,err or (data and 'Shared '..tostring(data.accepted)..' eggs')
+    end
+    local function refresh()
+        local epoch=queryEpoch
+        local query='?placeId='..game.PlaceId..'&limit='..(viewerCode~='' and '10&tier=premium' or '30&tier=public')..'&offset=0&minRate='..tostring(minRate)..'&minRank='..tostring(minRank)
+        if othersOnly then query=query..'&onlyJob='..Http:UrlEncode(game.JobId) end
+        local data,err=network(config.endpoint..'/v1/eggs'..query,'GET',nil,headers(true))
+        if epoch~=queryEpoch then return true end
+        if not data or type(data.items)~='table' then
+            if err=='HTTP 401' then viewerCode=''; unlock.Text='PREMIUM'; feed={}; pageOffset=0 end
+            return false,err=='HTTP 401' and 'Wrong access code' or err or 'Invalid finder feed'
+        end
+        unlock.Text=data.tier=='premium' and 'PREMIUM ON' or 'PREMIUM'
+        nextOffset=tonumber(data.nextOffset)
+        page.Text=data.tier=='premium' and 'GLOBAL TOP 10' or 'TOP 30'
+        clockOffset=(tonumber(data.serverTime) or os.time()*1000)/1000-os.clock()
+        feed=data.items; feedAt=os.clock()
+        queryStatus=data.tier=='premium' and string.format('PREMIUM | %d servers | %d reporters',data.servers or 0,data.participants or 0) or 'Updated'
+        return true
+    end
+    local lastRender
+    local rarityColors={
+        divine=Color3.fromRGB(255,205,55),eternal=Color3.fromRGB(218,202,236),
+        secret=Color3.fromRGB(255,255,255),cosmic=Color3.fromRGB(190,85,255),
+        mythic=Color3.fromRGB(255,75,85),legendary=Color3.fromRGB(255,155,45),
+        epic=Color3.fromRGB(255,110,200),rare=Color3.fromRGB(65,165,255),
+        uncommon=Color3.fromRGB(105,220,120),common=Color3.fromRGB(220,225,235)
+    }
+    local function weightPresentation(entry)
+        local isKg=type(entry.weight)=='number'
+        local value=isKg and entry.weight or entry.scale
+        local neutral=Color3.fromRGB(220,224,235)
+        if type(value)~='number' or value~=value or value<0 or value==math.huge then return '—',neutral end
+        local compact=value>=1000
+        local number
+        if value>=1e15 then number=string.format('%.2g',value)
+        elseif value>=1e12 then number=string.format('%.2f',value/1e12):gsub('0+$',''):gsub('%.$','')..'T'
+        elseif value>=1e9 then number=string.format('%.2f',value/1e9):gsub('0+$',''):gsub('%.$','')..'B'
+        elseif value>=1e6 then number=string.format('%.2f',value/1e6):gsub('0+$',''):gsub('%.$','')..'M'
+        elseif compact then number=string.format('%.2f',value/1000):gsub('0+$',''):gsub('%.$','')..'K'
+        else number=string.format('%.2f',value) end
+        local color=neutral
+        if not isKg and not compact then
+            if value<0.60 then color=Color3.fromRGB(245,85,85)
+            elseif value<0.80 then color=Color3.fromRGB(255,210,75)
+            elseif value>2.50 then color=Color3.fromRGB(100,240,140) end
+        end
+        return (isKg and number..' KG' or '×'..number),color
+    end
+    local function mutationNames(entry)
+        if entry.isEvent or entry.source=='event' then return {} end
+        local raw=tostring(entry.mutations or entry.mutationText or ''):gsub('%s*%[[^%]]*%]',''):match('^%s*(.-)%s*$')
+        raw=raw:gsub('^[Mm]utation[sS]?%s*:%s*','')
+        local lower=raw:lower()
+        if entry.traitsKnown==false or lower:find('unknown',1,true) or lower:find('unverified',1,true) then return {'Unknown'} end
+        if raw=='' or lower=='none' or lower=='normal' or lower=='none (explicit data)' then return {} end
+        local result,seen={},{}
+        for token in raw:gmatch('[^,;|+]+') do
+            local name=token:match('^%s*(.-)%s*$')
+            local key=name:lower()
+            if key=='gold' or key=='golden' then name='Golden';key='golden'
+            elseif key=='silver' then name='Silver'
+            elseif key=='rainbow' then name='Rainbow' end
+            if name~='' and not seen[key] then result[#result+1]=name;seen[key]=true end
+        end
+        local order={golden=1,silver=2,rainbow=3}
+        table.sort(result,function(a,b)
+            local left,right=order[a:lower()] or 4,order[b:lower()] or 4
+            if left~=right then return left<right end
+            return a:lower()<b:lower()
+        end)
+        return result
+    end
+    -- Glyph masks rendered from Minecraft.ttf by Craftron Gaming:
+    -- https://www.dafont.com/minecraft.font
+    local mutationSpriteData={
+        filter_divine={width=111,height=44,data='iVBORw0KGgoAAAANSUhEUgAAAG8AAAAsCAYAAABrCeaiAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAQDSURBVHhe7ZoNcdwwEIUD4AiEQAgcgSIIgjAog1AIhWAIibIomLTv2c/u6VZayTr5nHT2m/HE2j/Jeo4se+4hCIL/nc/Pzycc738Ezj9ok3t3ju7/24K5Os1TZsEEPipsN9DNof3vCi7gp67FRXfrG45nNE9Kr4L4l7mChX0rbDeO7n9XeAG6lk0gj0JW71yvPnyvCtuNo/vfFe/iWkD+i0ploV+hBvatsN04uv9d4QXoWrpBjTeVM8Adz7y9GCEe8QSEL3abe4CLGCIeQS13CQ0GM1I80bwTDW7EEw++D8U84nhmW64irDcVDvaHk615N1Asha3AfJ69ZRQ6gaYXf2YM+nlUO8ePqVAG+uYQC2sqpto/8eZBIYwxNzDafJaudVpQnXccv+cqM6yNg7vjttULwZvEI7A/KaTEOuE4b5285EIWYPc2Qm8KS2AthQwRD5zgd1cdb5wLCDtzbHOGD+KelVbGGzQHrDBDJW9dOtFsnbyqENfQp7AE1lLIEPHg+6VTl8t+r4GPX6Y2wTEpPU9l0EXx4Pben9Y8NFsnr3hx8Jn3MdrkNrCWwoaItxGzzNM2u7ooPja6xSP0KzThMg/N1slrEmOBNrkNrKWwu4uHOslKAROX3KalMsd1vQRv0PDdTTyCvOzyBLtZjmiTO4E1FDIB073/8ziG9QMAzjcvl9ewhsqleIOGr1e8dQLR3CLeq+wGhazIbGANhUzANEQ8+HmzTLtA/PVqMnZ9VuG8+LyEb/qogVP+d2ZvRgLf+1TsGnakGAN8d/3PQ9vb+l/ezd5uN3lGoH2zePCZyfPGAN/l9WdBTG41Ke5oFZKChC7x4B66YSFoezXXT288lzlH8o6E9gjxst9BeZ0KSYB9WnmYJ9PNTB1eUxl0UbxK3uZXhQX2KV8C7Ovdz3OZE5irkBWYbxZPIYZaDv54fW/FzFVNhKx4sA9/SV9omUQ1DcxVyArMId4CzNUBKXQCzU3i0Ta7stA3tJ7C7i4ecqtfZKq0iIe/3R+mYdo02UQ+A2vzUNOg9ASYDxOPqFkie/3NeAPopGvDcAnGVHym8VAzgTlKT4DrUPEQ435ag5+vCGYeYOejid9CXxjDtlz/gHGYeKhlXiZh7hHP201mYY7SE+A6WrybX9KFnStvAFtAnewaDlePeJu32MxRegJch4pHENf9eeyCfcRDjeLDF+7N4hH5m1GaAa6vIN6I973x4iHf/d0KQrrEQ93scy8HY5VmgPtw8QhibxVwnHjIa/rRLUJ7xWt+VjBWaQa4v4R4BGb3G2aFfvEQ1/Vzd8T2iuf9NCKBsUozwP1lxFuAmyLy1YvzWdo9L/PN3Wb2eR4EQRAEQRAEQRAEQRAEQfB9eHj4C9ICM72pnaD1AAAAAElFTkSuQmCC'},
+        filter_cosmic={width=126,height=44,data='iVBORw0KGgoAAAANSUhEUgAAAH4AAAAsCAYAAACjZQx0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAATbSURBVHhe7ZsLcdwwEIYDIARKoARCoAiCIAzKoBRCIRhKIiwKJu336357zqeHJfvuEnf2m9HE2l2t1lo/JPnyEARBENybj4+P75S3v4bj35JZHfyPkOfHU7pzSP43m30eCoLyQnmjvDu2GWR/KLpSf1Ge3SxYgbF68RBmoPtps/tD/08EMD+GenHzYAUl10OWge6Xze4H/T6q41MI49hNsAJj/HXuePpU0rPH+Qh2FazAUH2Ndzz97U66sLugA8b782f16tT978LugiNA0p+dt93YZXAESPwf562KH0PPlMX7B5XeVU+UH+juPxsNtqGEUZoo4TbfBa40j5j2BLKLDZkuLum7Jzc007JTewjZqwrZO+WVkl2w1IvLKeS/rdf+xavFCep6Hz8lBxegUx/zHEnHFPXxaJMFyHWz1Cj2MYFe46j+ansraV+Fw7ofDBYndwn63UnHzfASUXFRqheAdJTueYls3TRBvZp4yndXi6BfjAn16hiiU2Ky5CMbTjxyjWN1/V+hnHwcVR/z6BaDtQV8aOa6+ippkAWOrLoUqnF5LtRrie+N9Yf9rF7Q2LynTs9APJR4fGwdxzzxCJsDSEe77nbaf7OrXeik7TJBvfmUKkGbrsT3QnttVXefH7aLsUTUnXjqwxf6GcXEtzrPBnwU2l9liahB5k96XOpvEg6iWFJQhvquxAvH1YVs3XUCUXfiFbvlWxhPvM02QfPVSeMISpT9NmOuocFLgRn5s+pu0Od8I1HtSryOT6LN3DfxnGTzAw967R3Mkx6OtRys7hyiS3cMh9WY1SdlnhDqGLFm/T9VLE6ofmpVJQ0YdtU99Qls9OrRxEsTztY5zDFQ7Uo8bdbGUed2ucTWOWvWr9VO/tSWQWpdodioE7sochnoBCoNXmvgNMFpvVfThKsH/FQTj25k1r54hLfiQ/dms+7Eu14Ef9vyQ9ubTO4UkF1koGt+ecKk9YqYZtLVdx463fVKqq761nKwdccvll/UqzHhJ9u0Qla8eJHPrxuqq4nHvjWO+zbLcFCdoJwHOgJNu67mEuirFyPxTO/55pPhHJ0fJbuA5csmGTaZwbZ1F7/YbAZZ8QmBfCjx+nuqFmmO4yq1ICfQD9/1NLtp4icUmwbT6iayc7OEfFm14NJuwuoS2fn0+Kb6uYnHwdW3bLG/6aO+BH51V2qC2Hofz33r2OIFyL9M4rG/3aNe4GR1PaqgKdmeNyrdoTqJxUcatalx6WMC1erkzqZNFIebLJBvmxwi8cL1IvjbPPlO4ODqn2XxeZPlnOBYH3LUXoN37kMXYfMJZtPDJJ4211/OnYPBVXbZ7G7txIYhvvPH9OZY7eIwidfxSbSZLL4FGHTPlFvYXUInavEu8DNv2Yqtfmk3r6M5PkTihdpZvoV24gVGu5NvVwl8tTZbusHP4nG1dSBoN09SOT5M4qk391tWWE+8wFDJv9rPq/F19c+yGkDruqHNq5snqB8m8YK21/ss28IdNScWJdx8AeLhiwn76g8xkA8lHvtsCSmZ1Qvk2yYLrC5xl8QL5BrHou8GY4mfoCN9eNAMUYkoDrjklNV/ocJUge/+6ZX0tpOfLCZk2q2TruoL+eESP4Fe46ic6ByzV7P6oehG25b0IAiCIAiCIAiCIAiCIAiCIAhuwMPDP7/xa7YQIwtaAAAAAElFTkSuQmCC'},
+        filter_prefix={width=213,height=44,data='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'},
+        filter_eternal={width=124,height=44,data='iVBORw0KGgoAAAANSUhEUgAAAHwAAAAsCAYAAACnkNxJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAQCSURBVHhe7ZqLcdwwDERdgBtwA27ADbgCV3AdpAO34BZcQ5pwFynmkl3e6ksSJCUmR2fwZjSSCCwACrJ+5wfHcRzHcb431+v1x+8TUK9Qzh2w+gfbT7kteMO/N0M1HLYLk06Lhp2O8PirFRHJY24JaqBeoSJg+yW3gIadjgzTcJhebx4LMjkdGabhTCaXGZmcjgzRcIw9ybxBZqcjXRueFFQA3btCbJDZ6chdGg7Xl5uiDcmTIPcblk8smwc/1oTlgs1HuUbAnpwTtXIJNWP/A8vXzbrUk9MTuUz1bW5b2P/E6kUuWeD3JP07Y2DZzJFwTLZDcyXUy22hWZAArt0ajmE2IjoAKeD3JtmG3Jw4H6wetY6Q3DwmIKufgP1DoZKU9CmguUi+waqVeeS2YAksJA9gt0vDUcubTNWwfslncnPC+BcX7UZIXjqIWf0a+GWbDltzwwnrUoiZQq3jNhy70WtcA68KEzg7p6P6BJu6JtgI2ZuB9klhAlatzCO3haOTkzyA3VMNxyYvk1WX8RTUKlTg7JyO6vfs65rA+JmGb64cVq3MI7cFS2AheQC7pxqOGpov5XsYQ+FOz+moPgViPSvsDMYON5woTMCqlXnktnB0cpJHWPHkEgFN9r4IW3hYwSavAh+30RjYPkMwYNUwwZxY+KScaoiph511hCdnrM2TnbFC0BUcUw4+oG7ycx8Ln/azrDWKkwS2MRsucwRiRQ8+nITMEXIpzol2uSax9LDNJ9YExp5ljoAtPugVMI9CpJhf/Qq1jtdw+GcPVisKWToIUcP2FPTRFYFgPHkiYvxLLk0wj0JEwFZ1+2JNcltoFhSw4sllA4YP3f8zhDO/MKdkw9a0zoG0aDDE21P46fjmscAx2rD5eBuJYS6Fau9fs6CAFU8uGzD8TxsekhY4oq/VwK/HA+r/2XDEMr9Y5cjVUDuf1jmQGg02z3xrmGEuhWzvX7OggBVPLhEy5yh+m96Tq6F2PkfmUKOBT/JbA8b5xjB/UMG2eRVgLrmaeWFra3gN6+SkEC/35cn8XAk7X4OixmOcDzZ8teH9kD+EhPsz1skaMH63hrM27aZIzS37NsJccjPzMobcFixBDevkBEPVl62pIKxP39eEeQ+f8pXI6YlcIkoarKxb17f+C0/+80OKdUHYPvxpdcWwDYe92+snc4WkwMoL299vOMGY+aVoYl0QtnsckGEbTuDT46QesuFVf+X7grB/tulDNxybYz+l17BOvgbjxealCsKw+c28wNANJ/Ab9z28hnXyPTBnvyiRZEECZmr54wafvrN62Zmj+IMC/eViktMTuUS0aDB0vy9tzrio+akl+a9djuM4juM4juM4juM4juM4TkceHv4APa4U8/FY6EsAAAAASUVORK5CYII='},
+        filter_mythic={width=119,height=44,data='iVBORw0KGgoAAAANSUhEUgAAAHcAAAAsCAYAAABfcCe+AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASiSURBVHhe7ZuNVeMwEIQpgAZogAZogAquguuADmiBFqiBJuiCYribkUfGykpryYkdO+h7zy/R/mglT+zIdnLX6XQ6HY/v7+9HbO//BN5/0CZ356hAy/tBUgsEflDYOqDAiwr9kemisF/1/yLTLon7IQd8HwprBrl/1Y1h9X0ynRTeX1Rg9qeuf7O4Xr+vCluH0+JoX0Rg9JN8YllHrk3hOLDxOy5sMhs4Pg3V4OXNgdx9HLkR2M4SGPlv6mpk9YkUQN0vDSEgsyG3HyLwLRYX6df/zj0F9kUCI88IS1hHIZuBss9D9R/kMpT2A4FvsbgE+ddZLaOIN6kmgRGfFZawjsI2AzU/VH5ELsPMfjhL3KvhTYrAXyUw4orCEtZR6Cag3oNKJ8ht8PYDfLcpLkGMKzD8rrCEdRS+Caj3qtIJchu8/QDf7YpLEJcVGPZZYQnrKMWtqZAEmJ8Gb5anipgioQDwxgRfEBevf/he5gDa/C4NY8hBXwjMU8wj8N+r5ju2zyHlB44FGz/E+X7grBKXIDYRGO0qYQnrKO2I4n5yUzML/G/qKgGuZnFhp6jVugjbV2sniA8CczIyVcE6oSDwaiokAearilsL94m6G4G5SVz0wZV1cvlWyfniEuSYVegcrKOSNyuueFaXAbSrxUW7eE1cwWXEXcJvERf9fKnLAEzV4iK3+aCZ0MU9JRQAl9wP6Gu8QYFmlbh8P5gWc7viTmntn8ztB/nvGYtXV4jpXNGsGjtyxjtYOdgntuR2JcxPsHE1/YrN3vFi0pBugY9L7dpLHXOZMIV1VPJw4nJeChuB7VFuwzQezaqxq52FtRTWRs2k8OoKDH9cQf8acQns2csj2hVSNXbEex+U5Y8FkVw1KRaROQH28dqX8TIbWEdhbk2FJMC8V3Fn6+Dt7Nj5OjSzmPlV0zIptMeH74RtuQKMl8vAOgqr2ilTYO7iLqF1UrDFn80kwhLGh8QMrKOwuZrmGSds2bOGOLy46Oe6p+UpsGcfMjNeqQbWURjjkjPAlGkcgYm34rw7NocXl6idBXXWW1DVwnilGlhHYYwrflIJ/HGB9oDNvUQATeKC5A5SxMuBb3Vx5+bJWtgueymksCoYr1QD6ygsgPaS+6c5jLiwmV9glIhz5PhkMsSYU7wchbQcuV5cDWY/XFPcYt1Gckdu9kF9jjhHbzwx5hQvRyHV4hLWkX0J+xEXpnNukk+xkwKoN3c6D8Q5cnwyGWLMKV6OQprERXu7BwelSZVgvFINrKOwEdiKC6spiPOepZbErTp6OWbFX11cgj63eeRXmlQJxivVwDoKS4DdFRh+3h1r2kER5LoLN8IxK3YX4hLY139YX5pUCcYr1cA6CjPAzVVfchpVO6xs8bpIXAI/d1T4YfoQnkI74/C6G3Ej8J/3M5sjwAkO08ly3Il1/DMCCI/hOgdk5qgdT3+dHQHR3rTxj1L8XkqOQNrop4Al4H9XeGdPQBjvVFtL/77dI+eKy3x11dkbFxB33b8/dpazVFzkfWFb9gissw1LxEUOF1j90mfvUCRszxCMzyl5pyV3B4b/0eHdGa6ou6idTudmubv7DwiIO8uNEMiQAAAAAElFTkSuQmCC'},
+        filter_secret={width=113,height=44,data='iVBORw0KGgoAAAANSUhEUgAAAHEAAAAsCAYAAABSblf5AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAQSSURBVHhe7ZrrVa0wEEYtwAZswAZswAqswA7swBZswRpswi5uMXr3FwYuHPKAZI7eH7PXYkGSL0MmA+Rxzk0QBEEQBG2+vr7uOV44Pjj+fGewMh3SPZF1a9WD34RgKHgfU5hO82Bmgt/C3qYRIogOEIdnvUjzYdltEN9ZIEaIIDpALDbDl2W3oeKb1RkhgjgIffg4deU/rKiN6UeJIA6iz6f15YIV1aHivelHiSAOUBrSrLgOuodJngfjn5z0mm+WEBb8B84aiN+UtqKgA/rvVf19iRXXQdcK4p1Jh8DOE8c7x2bgJq1Z2DOXp9aZ0q9s6kHbYHbVMcsXgvTLVLpFWpOk/iCth3KxaUVZ0HX5RX6130tY9S3cqDozVblJu8CEOiW7YXAJuierVgSZgpcNRoUUyFI98jUWyW52jZxufAHZQ36R7RdEYeVZaMA7p67dGDV+snIc6rxY9R2UaTPiUMdd0Aripw5L7kg3X4F22C+yfINYcm4NGi1DHq1KE2lTxT529yHvdirqohrEFqkBBkkXv7h2fxP1KSk+iZdYQIuzUcpkr+eNSaiumVogr3c7ULgEkUs3v0j6BlFwg9OfKvQavHezUvJGt/BkexlHSHY5vMIliJ5+cekfRIFGT9rp3RvqbAJJuvhWU/YsDZfVe1H2noyBri07C+X6JWUzASNbEw/NHF85Uvukm2qUQaPxUfVyD6erXzPkFdtlkvNg9I5Dzh9+M1XHqsuRLGjeTLJAXvEzaZKiPUH9w+tTtNUgqtykWUy2o9evmVq7TDIGdtK6aTJZBk16wjh77QAlB2r2KHuV5ijoi501t7+Et19rau0yiQ/Y02ei+lkDzSBHx681slWzV5xc5WgEsfpGI3H1y8wmfiyIAputaX6r08/yY0E0SREk/28QMaDx79C4gs2hIHKf3djRQm2z6jsoc/mckt/88RWZq19rSu0SJqmDbmmcGsOh/T6Ng7nZXmutlhazdl3i1NsjrF4W2jQ8sZFfJqli8hKn/ZoptUuYpA46988EjapuHFCe3SwgP/vLCOerLjHIPxREdK5+zZAuBhHau2SI3IJIY1JHch5eFBupQ3Sekt3MD9doEF39miF9eCsv21byXYKI8U8zmSDdvT21YnFWjbe8HlyCKLz9Etg8/B+nbFvJ93oTN689N/NYVy3Ocn21DfBsxxTw9msGu63lWyLbVvKHg6jOMXMbHBy+fGKv9VPU4SAKb78ENg+9jdm2qjLHoafgEuqpQ6sDL+Vd+7HGzlnyZK82EcjhGkRBNVe/BPaaD0e1rZSrUfNsTr9OZGdiVqa/PbRnTSvQz/Y1O8uOb2Y7LXM4qksH5LM9179nnIXq1/BLuqItkwZBEARBEARBEARBEARBEAQ7bm7+AieAv2/JJn6AAAAAAElFTkSuQmCC'},
+        filter_any={width=73,height=44,data='iVBORw0KGgoAAAANSUhEUgAAAEkAAAAsCAYAAAApSpU1AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAMISURBVGhD7ZoNceMwEIUDIARK4AiEQBAcgmMQBkehFIqhJMoiYNJ7b/PsiSxpLfnvppa/GY9r7Y+9L7aqdXI6ODg4+Gk8Ho+P7woU1haqvRiI+kuhbcCCVXsxiPmj8DZgwaq9GD6eCm8DFqzaq1B4G6jmaiDum1LsGxaqmqtB7G+l2TcsVDVXg9h3pdk3LFQ1V4PYu9JEwHaTW4Rc7APC9qlhA8ecHy9yiSjJ+wqGL09rkux5AnDSuwKSwP6lP5PAnpyXvGLAGfZAnCGwJ+9SL69cAjA8TyQWKGePq/ZJkCM5L3nFwOYK3wG/SCgvr1wCMDxPJDi5AhD64cKydxtsfy3ZAK+YSq5KaWwuEguUcxLYbcHIvYYiYPuyZAO8YmpAnmDe8/LKJQDDs0Uam2+s9eBeQznOlvAFr5hakKvvE728cgnA8HSR4HB++rlYEl6kjnMEjwQZEwl2/lc1cbH3CqHvzZKCrUUqmo86NJQEFx7NS14xsEV9H8ayHwRsn3LbViTvZOT1wgiOvXkp8CVeftiSr1mYRy4BGO/nPS+vXAIwPEskd51Si9L21BZDSmI2FUlOSxKc8MeLROPTZzl48Upv/A+RYItW/xjzljl5kbwTTQU5h3PYWiJlG3LGy83AENsfr+1yRVp0PupQeqOk4CElMfBxlyOwW5uE/Ru2sZeJ7uO2CixAp1hNJAI/tymvIC0SC5HD4iB3/+XAyiJl/SrJiuS2GLAne7EO2uUaAVu/SPQKkUtEaQwOS7qFErIiuc8p7O7bRtjdplhuq4pE4Fv0RhV+Xn+aFknGLDy5XJPAZez9ks1LNQV31MbwWmVOAjv7w7p1EguQMQt83G9A4OLe6rxw+mG/ukgEpgvigqdDx9Z0Yz99xd0K/NAkSIpDJAKRvDVh9B6sOUbuouwjvAtQ/Ls2Lmc45wR3BMdopxA5YN/3bxlQ4BJt1b7no7kiMV6p9ssCIu3/hx5TRULcHVsbv9CbIhJi+m9nmoDFYrui8BsFwxb1ZxzD9oGN/wGP9dDBJpxO/wBE6iojlRTS+wAAAABJRU5ErkJggg=='},
+        varesco_b08={width=157,height=32,data='iVBORw0KGgoAAAANSUhEUgAAAJ0AAAAgCAYAAAAIcnp9AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAUxSURBVHhe7ZyNcds4FIRdgBtIA24gDaSCVOAOroO0kBZcQ5pwFynGd7vU4gnEHx9AUPQl/GY0JPEWuwCM6IfS5Oni4uLi7+Hj4+Off51A+47HGx6vuHyWRZEB3594fMdl05f0eJdg/9iHuYvxZDQfyyMhswRqvyRz61JQ/npTlZHslLkbIXwE9P2JQ3GT7PRl3+rm2+NN2D/1wfnUxaefrFcLH2emoPbwTUdw/pC5G3H4Dr7Kztjri/589nuR3YoJ3tmmI7iesvjw4SuBEfJImhmD2imbjuD68LkbafgOVhtvli98vsjS2OsdFqLkg7Zdi4/+fPZfEfJIKTOA2mmbjqDt0LkbpfAd2EviLF/4vMvS2OsdFqLmg/ahxUe/bNFJyCO1TILaqZuOoP2wuRu18BEYLNvZvquF2OvN/ls+aeYW0BcXnYQ8spF5+qYjqB0yd6MVPoJsp/rC67dsF/Z6h4XY8kHdtfjQVRedhDzSykTtU2w6gvr0uRutcNTiRXhpaSOW93advs2BE2jsvZ3Xe4uWTwCa5uKj7hn7/27TEWimzt1ohaOWTQ5tLyoXQf1Vul5f+5hd4Zuk3d41Wj4xHJu6rED75qIT5qiLe+xeXQrK0zYdgW7a3I1WOGrFyalcJIQc5UtGvEu0fFKgXS0+rl2LTpijbu6xe3UpKE/ddATaKXM3WuGoZZND2yHPdETlIvSTrGvBYtTd6PWBfll8HN2LTrxjR+1TbjoC/e65G61w1OJFOOQ9XQBtU15eW6i7MeLDsevUDXMU6V4Xry4F5UM2HWGuTt0wR5F3RsJbyLZncad+kGih7saoTy/MUWTPurh0KSgftulGYI4i78wMh9dR9+lWN4hHvdXdmDnGFsxRZDMTtWvTDTD9GwlhL61k1FvdjTMWvpWJ2rXpOjnqu9c3WRqj3uputHxQ+4WH600zdN+p12UGcxS5mSmZW5eC8u5NR388ps/dYKPqe5j+KxMCj3ccsp84jXqru9HyQW35w+LYXHzUw6e6P2rTSTN17gYbVe9Gg5r+ezqC/j9kldHyRq36B0nx+nAsal6Bdrt/Rb2aM5gjWU/m0BxRnrbpCM6nzd1go+qbQHvIL4dT0Lf4O7pAyxu16ZuO4Hp1S4fXKi1Qr1IGcyRzZ27oVt9Fx6C2+j1bimTucRBcT5m7wUbVM2gmWTcbvr9Z51FNK1iTTZEN70M2HUHbsvg8qsmgfulYgDmSuTNbOoL6chM+Bs3PaC+uKWFN0lPmbrBR9QyaSdaNxxfH6r9K9scjvjfH+3nLNWuSZaDmHvOITxhDCvXqmsEcydyZuGy+TBLo7RUH51wfvgeugrp9KMP5w+dujIR78Pji2PxKLYWeW94ePD6odc2denXNCHmkJ1PN04B//D7s4XM3ZobHeH1x3vzXGUNP9al6e/D4oHb6pmtpB3HdR03HsQX16prBHMnuzAyP8frifOs7V4Oe6rPrj+HxQe30TYem51tlP/BevQfsGccW1KtrBnMkuzMzPKbHF9euZzt6Sl/19uDxQe30TUfQ/O1WHQe+XTfYS+NoQb26ZjBHsjszw2N6fHHtem9HT+mr3h48Pqh9ik1H0O5+NUhB3zccum6w18ZRg3p1zWCOZHdmhsf0+qJtc+PRU9qqtwePD2qfZtMR1PjptJpRAvrstkpgdBwlWuNijmR3ZobHjPiixPtMr6zflDd4jQfvjIfbA1VvD+y/5cNMarxQr64ZIY/szYSGm+8HtepmoM3+ew7Jq0Dz8LlfXFxc/Ok8Pf0HcLxyU2WIgC4AAAAASUVORK5CYII='},
+        varesco_b12={width=169,height=32,data='iVBORw0KGgoAAAANSUhEUgAAAKkAAAAgCAYAAABpalg/AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAT/SURBVHhe7ZwNceMwEIULoARKoARKoAgOQRkcg6NQCsVwJI5FwfTue87Kozj6WclKqtz4m/FEXj09b6RNnDpOHw4ODg4ObsXX19fPvxno+22yKmif2N7YPtj+mMWKYtYnzZMNq4LWlZ90bDruo4VctPhb+IKtju1qedRA/oj+B9u7xp0czlHcNh3zxYbOiyWaRE/EZFmQvUh3GuHHxlQnyJtf0PHYVCCt/ilSOh6vkkcOZFqHj9MIPx7vb6d3cujWK7Z5Urbg8YuH7GJ684t1tN0F0uO/JaejPTyPLXRrHd5PynZK3tPQMznEn9m0AEMwr+RievPb6kqeMb3+MSUd+0PziCG+ex1y3lPROjmE9cr9PCnGYZN9sZje/FK6nGfMHv9ATUdsWB4Bwo+n3n2kvKejdXIUs+7h4P1hh1nx5pfTES8WyF5/4dERH5JHwPx2k/KejpbJYf+HdV2TVzvcgje/ii5bIIP8b5aHYP/Nunaz9Z6SxsmpnuY1hk2XQNbLTGpbrPoujObThi2wv7s4BP3JAhnh79UJ+nflISxchDGfbCrmiysoxJ8U51Fr8mbheSFJ1+Sw+3qK5tGTNnkWTYrJS6wT682vpAuguSiQEf5eXQDNnjyqZzN5mfz/oGFyipc56He/IkvHFPT/MmlLftXiCKB9tmFD/L26LWh78ihe9qN//nfGVhomJ3uqp++Pydx4/WgPLw6BfimQEf5eXQr0TXlYKEms+6/wTA7N4uUOdNXT/BbGFE/7JrtacQjG6Drjbn+vLgdjXHnQbFoHby7Bf1qck/NyimRp/v5XY05D03Ds5Q8vT36ipCvBuOzp0+t/qzxo1uZs/fggvLkE/2kpPRHv5CxGjTDMVfie/ERJ14vX/1Z50GxaB28ucf5TUnoivZPjgWFHkToJ/jSPIt3inRyY+nRPn24T1GWfJhr8b5IHzaZ1KOUSE/ynpfREosm56z+cpONB9xw0FUiLv8munoeFkqArXn7K5Rb7T0kucREnT/tuL0EFHc2mAmn1Fx4dzT15lObt7Nu6LfQnc4v9p4QEdT9nkjh52nd7MT/WsesukB5/r47d3jxq6/Bu0gvoS+YW+08JCZZemfGk3u3XorFOEHIVSI+/VycINefBrmcd9DOdi5/oEJuzSMlh+VkB29nNBnoSbE2vSvazBR1AM90NJrEuQLhaID3+Xl2AcFMegv3qOgh0Wt9XHovfam39bw451P4izKInZTYL7N/rrXrJRaCrWCA9/l5dDF3uPASh6rtpC7E/u8plffOivdxNZd0LhIdoVujvLlK4uLTEge7qpmcR67bQnS2QHn+vbgvdrjwCxIpnwRZif7UtvGV98xilWSHYXaRmcQZhTabrdNMCnlqgq9/vmQJJskB6/L26FEiqeQQIZ4u6leDPo+4zTaJjjdScQbyrSDHL3pNI3/Q/xIuJdTmQXSx6j79XlwNZMY8YuqQd8YvdxZ9msVZGas4g1lykNknJogmof9AEDf9J85ZYVwLpWYH0+Ht1JZBm80hBv+eKSZbgz+P3vJMSfLZ+F+j1WaJYoDFop/rnECliXQ3ka4H0+Ht1NZAn88hhev33lOaPYrG/2hbecr3PpIIOPQFdAkr+6xVi+k55uVxhQ5ph/Lf/mx0LXxDrPDBkKZAef6/OA0Mu8vCAfrk/lS25FkKe1i/deosfXTrmbf+6Pzg4ODjo4uHhHx0JHOY9OmuWAAAAAElFTkSuQmCC'},
+        varesco_b13={width=288,height=32,data='iVBORw0KGgoAAAANSUhEUgAAASAAAAAgCAYAAACy9KU0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAlzSURBVHhe7Z0Nkdw6EIQDIARCIARCIAiCIAzC4CiEQjA8EmERMMnr1rZcsqUZjfx7e+evyrW2pjUzsnSzXu/Pfbi5ubm5ubm5eb/8/fv3xz+Ax29q2hX6lf8fajKB5he1UdStCcxfHqrtyGUX5P8J23eOA9tvdZ9A2x9s/2F7wTadb+ynOWhBvWQmklp8kezNzjXJY2sBW/Mcen0I7J97utI3ddg47x/VFCLqvwfkH6H/hu0n+z08zGG7Nsac1sZlKJEE9nddmPQn1/TdXZSShoHPtEBawHxaAYLkC3IZ+oMi6r55AUpqURUggv03M9ekHNsS2KpzSH8yNynHEPWddXgcKkJR/xaQrVp/Ed+Hsxw8jndZmPDzXS4TjCNTE9jdBdGCMdS9AubDCxBMfMZ5eajGkZs9FqBHswARHL+JuSaMKWkFbLNziCbOW3WFmqFN0kTUd6mT/1ARivpfAjPH8fOhHMfzfRqtwaNt08JsnRTGkbkJ7LNFHAF9fql7BcyHFiA0u4s4glytXoAZSS3MAkTQ9vRzTRhT0grYZucQx+6TBuyzq62o76UOx6EiFPVfgvbP8r8ay/epWINH+6qFiX7Nisw4kjSBffgSkqh7BUyHFSA0bS4+RO5WLcASSS3cAkTQ/tRzTayxEdimc4hDd11AW11pRX23dGjrFqGo/wyaPz6s22j5Pp3O4IcWJvTm5SDjSNZEsmHg95NczIDpsAKEmM0bfKPI3fACXCKpRbcAEdiedq5JZ2zpHGKXTxx/Hq01Wbck4ptYOrS7RSjqPyN/m2n5Ph1v8AT20MKEzlyQhHEkrYDtk2TDWPnBdEgBYjw1b0Yu3TmArbtIJLUIFSBincsl0L2quSaMKVkFbOkc4tG98mJuydmCiG/S0ZlFKOqf4Hj45avF0vcleIPPQOMuTNjdBUkYR/IK+pdsGMaWmxDQm1cvXo4ZaMxn0AxjYOPbobMFDRMvnVkYv8L2omZ3DuhLMhNJLcIFiEDzlHPNmJJVwMY5//o4MvkqVxU935J1zy/szSIU9U/U7II+/LgHC9U09xm08wmA75pxfbo39k8BSXQXJWHC6jID7d0FSRhHXSqiPlqg7x+5CQH96gIESW8Rm+fJg3HVvYL5SmYiqcVQASLWGND+aueaMSWrgM19yQL7Lje4PV1GucyK0ID/bvGmL8mfA2/wS3gC1C2B4/Bi8k4MbO5VBey9BWTeG1gC7eoCBLs7XtiHiw9hXLmoYL6SmUhqMVyAyHIsOH7Vc82Ykqxhl5vEIzlAO73TNuC/9xLy+iuaUbzBt4A+LUw8Dj2TMU4KuADtkXsC7pVHzikCtFsK0PANzAiMKzdHsKoAEeifZq4ZU5JRqpcpSzzfsK0qQAT6oU9aq6lJqXsqRk8a4WC1G4ZxFHIGTN2XNdShv/fHP91P6eHlbuVIYHbf+kTfcBFcwrhycwSrCxDxzpeFdR5hOmyuV44ttG4837CtLkAEffh5nq5/7A6tv2gu2f9lRBPdCuMo5Ay09z4Ull6f81FNFbDNPrnqAe3aAtT7/Ij7VQEPxpWbI9hUgNZgnUe0HzbXjCnJCN2rH+L5hm1TASLo5403F6Ch9RfNJfu/jGiiW2EchZyB9t5r/vS6lo9qsnBfx2fg55ACJNkqGFdujuA1FaDD5nrl2Mx3vko837BtLkAe2T92h9ZfNJcy/0s44qS1YByFnEBz5BOd6Q8I/XvfH4ouprsAHUzrPKL50LleM7ZWni0837DdBWgLXqJMDlvoBiR0/FzB0B83mkP3BDJqagL/0dfz90uwBjwv2J52rhlT5jAcg7q7eL5LHx3db246DJP9Y9ddf2CaZ+LlUpL9X4aXaE4Oj+7ChD2/WzK0KNkmcxP6kzSB4+5r5R7UqUsF85GsAuY3fROa50Wap5zrnn8LdXfxfJe59HR4GP4OYelfTU2gc9+Ct3Ir/V+ClRgpk8N+8wYi2qc/POrVXME4kk14+jXIrctojiWwn/42fMSvpBZDBYhg/+nmmjFlGqX70t3zzXFJFtJhd6gILfx768/9QC7szdxK/5dgJUaWyeF49klMHsuUoF6mCsaRbEKmPZldhrYYzbEE9tDVwSiMKxcVzFcyE0kthgsQ4VhkSvBYpgT1MlUwjmQTMu3J0EsOK1+2y4WJ57vsH9XhMFyEFv5762/4qyql/0uwEiOt5NCWFiYf1TRBferYgHEkS6Cp95p2mGWMFiM5LoGkex8DPoaLEOOqewXzlcxEUotVBYhwLLK9+rnmsUxNYOfP5Tb/6NHuzpnnG7ayQITPL5pCRajsh8PI+uPPAVefFkdbM7fS/yVYiRErudYACfXqWsE4kiW8uGux8i0ZybEFNOZlcIYxsD3Vl1GtOGh/irn2YmQtHs2399kf2zRW7PMDgumYNskqYJvyiOoyaO4WoWU/HHfXH4GOV0tcZ+6nrZf+T8dKjIwmR726VjCOZAlPuwW5NxnJsQU03S8ERpHLzXMgqcWmAmRBvbpWMI5kCU+7BblPRMaGx6GfAsnjiPgmUV0JTG4RWvZDU/cqaITSPw6Zy/QyD/vpW/UyJ9C8i2YChksWpZp3B3Hct8NHcrTwfIwgd5vnQFKLywuQmncHcaa5jo7Ny3tJHseA71XnF2azCLX6oc29FzRC6Z/7al4y3ajfSzMB8emLEvvDP0oeBb57b0eGcvSA1H3WiiJ3m+dAUotLCxD2T5lrxlRzBXOVjOcqfD8qjyPqO6prAUlzTbX6oXmX9UeyfzyaV4eMtadmBhqvWJTuR+1hd7/bRbukFbD1fttlcwEikG9eBHK1eQ4ktbi6AJ0y14yp5grYZmNjP5lc6FP6kO+ozgKyak1Z/WCiNjQOj+wfu25h3lMzAwlcsSjdEwe7+yuHsLtfapSsSTTHCOjCReDm4iE3m+dAUourC9Apc82YaqqAbTY2NIWePOiT+qjvqM4D0lluvX6w974355L94/H9XAGpyQRa921RSNwbcehv3geK5jgC42EbfjZS981zIKnFpQVITSbQ7jLXjKmmCuaanBWguVuE6JPaqO+orgfkU26RftLzXbzQO2QlpX/uq3nJ27kHhMfuPQFomm/9ZiBZ/bWISI5rYd6Mja33r3Ev/dfMLSJxSqhX1wrGkea0uWZMNVXAZo6N/WmXNMFjbLzySt+6x37Id1QXAV1SERrtB336fSFszX8PTuhTduqmJ2uYGPPcd8Fubm5ubm5ubt4JHz78DwHK4UPo4VopAAAAAElFTkSuQmCC'},
+        varesco_b05={width=346,height=33,data='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'},
+        varesco_b07={width=295,height=42,data='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'},
+        varesco_b04={width=335,height=32,data='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'},
+        varesco_b03={width=347,height=34,data='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'},
+        varesco_b09={width=221,height=32,data='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'},
+        varesco_b10={width=389,height=32,data='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'},
+        varesco_b02={width=342,height=44,data='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'},
+        varesco_b14={width=192,height=32,data='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'},
+        varesco_b00={width=224,height=32,data='iVBORw0KGgoAAAANSUhEUgAAAOAAAAAgCAYAAAALxXRVAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAdpSURBVHhe7ZyNcdw4DEZdgBtIA24gDaSCVOAOrgO3kBZSwzVxXbgY371PC2qkFQiCEr1W5vRmdrRLAB9JUKKoH/vp4uLi4uLiosbHx8fvfzuwsCro/WWuG7D9bW5NRunshTpe1AbVxefdql5hNn3k95OiZwsP259B8b06+P7D5xefVVs88Hm5RVX5Ya5V0HDzUlA7zO/UufAg7tD4p7lJ5aGiFwt1UWPMdYMaa25NRun0ov5J36rq5bvJdO0sHoo/qmOx1Z3i5uVD7Ju5uWD/Zq5V8Jn2lSN9EIo/qmOxzQNEbeZzePxTqDILTEPMq4W7WEdd1DFzazJKpwd0NYsd4VQHoCBeZwJ30qS8uvpRnLm5YG/mylz/iFwIbMPGPwUVvlpgGmJ+W7gL9iEHziidLGg2Z/QEpzsAC+rf1LAFlLXGv3rGIPaX+bhgn/eTo31Q/AidAjpeLoaOfwoq7br+K1i4S5QkbGc+AMMdKsmZD8DNGY2y1gqoukNJz3xcsM8rpaN9UPwInYLaPjVsAWVDxz+FBXVDYzczSCFKErbTHoAmfZTTHoACremmyBIzuZQ23IPp+eZRh9h5qXe0D6UdR3WWoLXKhRUfJX8A0oDdp9z7xi+JkoTtlAcget3XwhXOfgC+T41bQFn1hoNs5rYC04+bRx1znTjaB8WP0FmC1pwLvg8f/yZUuvuCk9hfJrMhShK2Ux6ASH6/KftQn5Zb2ulW10SUa+C+s33lo1veqVkf2/A8qG4+zWUUPqvVS6QvzG0FMW9mdsG+6l9Ux71vRFaH71254Ovw8W+iAInvgdjNTFrA9tBkjwDJ1gBUl9w1vioPlLUm1tXzPX6HfYfNrE4dreu/1dK1tw81enUoS+WC7fDxb4Jo6yFqK8luoyj/kmQfQX0xaRfZzTXNqPbv0TGzi/TMbcZMLr3+xuqg3dMHjz06ZnYpfWM7fPxDWhUa4TofDfc6UJ0ylw3YPjXZRzBpF+rT3eLmQ9wlUfsjLHxmTx7M7CI9c5uRjpk3YFs9dqKodcbs6kOEhc9EOuqDua0ws4v0zG34+IcglrqIpuLqWRKb+6aEOmUuG7Cd9gCM6ivgo2V78xUtkdHzsPCZ3jxQ1rUEFa22mttEy7fSptPnItNGfNLjH4JQ6yJ6mvW0taIN2Nw3JSjvSlKNUTpZkH1Wn241tMFXg1G96xW1P8LCZ7J54PuumzCC4tZqZ3lzKXxNC/tmYqbs9Lng59DxD2lVhH16iKqtFdXYnJaJGXLgjNLpAV0NXHhtfI/aojiTmKHs03e6XtByJ01M4XM94uaH6lYU0X2GrWHhM5+dC8qGjX8VYpoPUWE6siVsv2t0JVuNNbcmo3R6QV4zYXP2vIeY1SBE7Y+w8Jm9OhWqyyfqqU7K2KYVEV+b13/QNSlHWPjMI3JB+ZDxr4Jv6vqvYEUuVNq13MB2+gOwQB3f+LzxSc+IirHw0+106LTe4a1elmCbHjuxDVdE2LsvSyIsfGavzj3ohLkQ+Bwa/yo4hZ3Avtq5+R1dB24OhEjf868xSmcEVKmHrZlrinlgo/ZHWPjMXp0laOjsFt7Fw966DtQOGb47jL37xlyEhc/s1VmCRjMX9+DfPf5VcNr7t04uJjsTJUl1m1uTUTojoWotT8KdEKbBfUQeMhAf/l1fAb/Ws7Dmm1PyMbkVUR+wnS4XNZBIj38VcxrJaR66PgKqb11Dl+vnL9/piM3fHAD8o8dOzTuE+LhLsKgP2E6ZixpIpcbfRcabzziUFJOfeESye3QyoKflVWqAqP40ByC2d9m1taIVsplMCvy7bz4U1AaT2aB2mNsGbF+eC2zDx99FjTCnYaC5SmBUx71vxCidDEjOExPaeqlWNxu07l/N6FbWWsJPd9fwe1ge2FZvjiiez/LmkG61185UzWVmDWJP8YI+2+5cYBo+/i6J4F2Y/AR1VJOUQfEjdTLgPnJl0DwDZsjkAVvZ6br+nKZo30N55hVFF2J3/YlahtLeSAfb7lywGT7+LuYwHHXaqnhIsjMUnQy4DxsA6p1mzUfkAdt89uB78xqtULQ9zKUbNN2zqoj6kKG0N9LBtjsXbIaP/wYMXTNDD2if7t8PFJ0MuA8ZAOqcn4M9Ig/YljtdevlYtD2wte7yuVi4S9SHDKW9kQ623blgM3z8N2Dc9RC1ILu5bsB2+PlXQfEjdTLgPmoGnNf/j8gDtnmnE/xOzfxF2wNbuJ94ENN6yH/qXLAZPv4bqKj1ELV6ES2why9wm9tDkp2h6GTA/fAA3Nf3iDxgu9/pUqucou2R1VhCzO5/VZmhtDfSwbY7F2yGj/8G86uCQPUiWuCSemPeOrSb0pFROhnwbb7lUYM43fbezHyj2h/pYFvtdIKy5o5XtGuYWxrVaaEuUR8ylPZGOth254LP8PFfkWxI9SJa4BI+/yB+OoDZfnqyMxSdHgjTmw4/+egdQL3l7i5jzKYVQTXx2L9kpxOY1A/9n5LVXW/95qN2h29r4NO1M1pYFfT+iFzoO2VDxv/i4uLi4uL/ytPTf6+2QAAo6je/AAAAAElFTkSuQmCC'},
+        varesco_b01={width=196,height=32,data='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'},
+        varesco_b06={width=333,height=34,data='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'},
+        varesco_b11={width=223,height=32,data='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'},
+        kindly_b01={width=83,height=32,data='iVBORw0KGgoAAAANSUhEUgAAAFMAAAAgCAYAAABuBERvAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASbSURBVGhD7ZmBUdwwEEUpgAZogAZogAqogA7ogBZogRpoIl2kGMj7e1+KZa9lOafJJDO8Gc9Ju1/rtSzJsu/mm2/+D76+vm4/Pz/f+f3i9wfHvV0brP2w9tXmQ9DecTxzvHP8VPuC6hwf8lO9dZNdpEH7xJHFUpw3io+WD0GbOfkher00+w22O7sbFNSSgPqLXSmKk7RRci+ublAbN9+wbEdZF37P8WRTA3ad58lNU/DPy08OC9TrjyoL6m+WVLDd270mvVtFz+8Pfh51Do6fdsuvEbRBdksqmJczIkYOv68+mpG0Br/Os8kR+7T8AhwxKl2OqV4IwYKiXYP92ZIG7LrDSjQuhN+HaAC2p+D7iAALZLNbN1wd2+3ANejfHaqiGBxT8gtKI36bjhTYmrVTQexqyIKrrd2xdlFPb0QG2ubCqZdprItVR+5eaA/Fccip+QUYyxR/4djcaWzNiLM5xZKK2hZ7KZ+geXjQXg/FmKoqXyTnUVuHnJpfIKM8KhNwM+qw1YcL5ej4Dg+WBujfFNPl4SmpdhFggV0P+PZGT5n66Rq3xCGn5hfg0IgsAbPOrNOXal1PMtA2o1htfRzdhACdlpnmhgjZQuAbv4Z2dbQJm3vEOWblV5FAAV3udibldPtRwN/sOW0r07NCXefc3fqsQXt03makUE/X9UI5t8tX51ehUdwdlR2rofgE5d19l1hqhc0Z+3c3YeC8zT5XediVYtm0/CqcuDzJ0/2jErN0Wmeiy9ecHdB3n7LyWyptd8rir09hmzacza/i9tERLl6FwwY2pXA+7e9iVtgUUN+8rRzlhj/WTIojT/o66lxPIc5wfhVrpuGwgU2nIeGhve0SNIfbJTTN3tDm06zzq9g/DYcNbDoNyZ5aA0dwZzevkxfPedb5VeyfhsMGNp2GZJsn6bWdmXWkuHjPs86vYv80HDawaRiSjC9Abl65pjNpu/tFy5Jh9vKrWDcNhw0GOkFfaQ73cwNxUmjX/dY6K78K4sPXKEsPO55YzZsI9c2HkwK+7jfGJWivGZnxPu9QDbPyqxwlKr+lI53Z7DOp9/alm42xbLoIjtlrprY52fIxJb8Kju6HAfzLTftRxzebXUzpu7RAG1OQYvrxAltNeOC8Q52NrhltmKbkV8E4/Fajss0pimVpgOn24jkPseqNobw7HYXOq8PVLuhqh1Kdkl8F+9GXoNpBlI9GwGZq0OZwM52hcznEyA2Xf7hj0NcpPyO/BvtTaFTvpJPusVnoaXP2o2uwTJbq7nQUyks65WpTl2XsGfk14NhdN/HVtYFqb43ZfsYHXH80lYh35uPFmdkTWD4lv4a9ZJWYJRW7MnY/W+nE1gyjnNw8oL67hcO3nD1DH3otD2bk16CErFuSrYGbqY4tH/IGyal/EtFu/unMzlvAt+749HNiAX8zqjBdnd8GdNoG6H8RTfveSKsXRllP2nRTvARd9wILiu0mDbjSC8aWTjedb0efvqdLf1H0QZfm99chl/jDa32R1PXdUH/+708dwK8OijWRX23EuxeGTOerU5jy7tuQkE8axY4GhvpQft988y9xc/ML94+tDW2BbUAAAAAASUVORK5CYII='},
+        kindly_b00={width=80,height=32,data='iVBORw0KGgoAAAANSUhEUgAAAFAAAAAgCAYAAACFM/9sAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAS/SURBVGhD7ZqLbdw4FEVdgBtwA2kgDbiCVOAO0kFa2BZcg5twFynG2XOfLglS/I4yATYLH4AQ9X6i+B9qHj755O/j4+PjhfTzlyH/ncuj1Uuw/0Z6PbwPFI/0j3Q2W4Lbo3yOCBHjjfTF6i7oVdaA/Dtp+DzFIr3ZPN7TqusQJArM9cX3UZFc38NgAmZ64XfZC8UiVRUpHPOr3YbI//Bo6DZmsvczc1l8bXyQ506SQHa9EnH+5iAK/Mw1t46YBUd9rrxoea4vFjUkmx6oH22jMkQ+oZg2yyD+emgPvWL7NuC+6gBn/Ynt0VZBUA0RdfsfDtRg0wb5Si//MOSFyI96UAabbiWiigpB//0ch/tXm2VkQ9I08UTKDVmCPHcA8sN3RNc00BY4qgLjIY7VgL55YcmsS8N+WXEl2D9FoAJkeS47g+7NZhnLd54fvUsxfN8gf9ncjBxJqwpsgiNTy8dLcf1i022Sbwmy1EOqqUGc7RGl3hoNofwIbNLUMqvApjxb4KjhsqrAn2FsEKW555nUvOwu+FW9kHuNhtQozWQfRgZ97BqUR6VyDMEu5kLFtqhBOtncDL6at8L5CDUkT7LY/yBF4bkOh90KxYmARuWQDFW1gCRsFshO9s7vTB9q6D9Wgakyhg+AvAXBTouOCt28qGOosMthjU3Vs+VLUoPk1bXEZkGydX5nBDQ7jDMR+FbwS5WgihyuUpArUDcqPJdm6CDPm17ys21DouzZUSmO3WCzABs14nTqKcFWc/20p0bgK9h/Cg+P1Y5smrz1sk3LR8ACi2eUPXu7AnWP3StpuOc8M4qbcOjbsf8UPdy23eElsGnmEWTT4YU+b5HkL3tS80tG2Cyw6CaI2yxMJQ59O/afwsOvVuB03klxxcrWZoFFd8Whb2dVcIFN9BSywy2D4kTAglVs9P+LCtxZxWKu0vW4bblYgfkn1F9bgfafwsvF6kp2WIEiAhasKgXKRWS2C/hvViB+3U3rGZsvK5BKqH5dWDwkNYwgP1wl1RA2Cyy+Kw7dooKpACStbrnFBffTn0ECv+pYyOIRzzbTc5ebaZsGKqfFDSq/zQLdW3UXzvEzKJphoYKSnshu/Y5VDIcLuB9uB9DlgwflLe6CvjqiQrS9QOneqiHYTLctJef4AUJV0j3IvUoQd1Ux6nnToS6wq47JEG0vUNxPN8VC8Z1dco4fIF8Ozx0cLoPoLnGhOgXmJYYNjq46UtusnDgocX4Kdnk7lZHQ+st0A4PVlyFu9wDT6oZzObjfOYNUj95qbOK1J9J6qPW/Q/dbwe/Gxr85kRbIu/OWnmeTzMi2IBbMDTtRLa6BhIfuGjy4bRWDemv706NXGQl03SHX80G2dbqC3XK427QF5+2VqESFc4gh2GyfhCTw6W8XDPrRZrrpIdgOhzG681njsB7QNR+sMuhvnvAJuKy8hGzttgRbbZm6U0ICm25vQd79uI58q8cimq3wzUezilGheiyDdcBnWYnYxFG9XYbIJhwK8K16Uwm60crdPEvvZl0G2fLPA4EeRNJ3hGrjzL2+rulgUsGXLzgCX20Zzn/tiO/NpO6CMQLX+MzgGPoFtfprR/67hvxm9pjoaD/H5nL5nT/55E/w8PAv+DyTfMwCFGMAAAAASUVORK5CYII='},
+        kindly_b02={width=109,height=32,data='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'},
+        title={width=238,height=28,data='iVBORw0KGgoAAAANSUhEUgAAAO4AAAAcCAYAAABmtIMwAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAASdSURBVHhe7dDBjus4EAPA+f+f3r2UeRihoW7FmRcErlsoUrbz83g8Ho/H4y/9dzPXfi2fGeIx8xC3mYX48SJ/Z0ntbTwmxCvnt3Ht1/KZIR4zD3GbWYgfL/J3ltTexmNCvHJ+G9d+LZ8Z4jHzELeZhfjjeL0QfyyvWVJ7G48J8cr5bVz7tXxmiMfMQ9xmFuKP4/VC/LG8ZkntbTwmxHP2If4aPmtL/WP+D48P8cfxeiH+GF4rxCW1EB9zTUltzj7EX8Nnbal/zP/h8SH+OF4vxB/Da4W4pBbiY64pqc3Zh3jMvM1svLuYb6lvqb/t/xC3mYX4dq5vM9vu1EI8Zn7MNSFeOF44PuaaktqcfYjHzNvMxruL+Zb6lvrb/g9xm1mIb+f6NrPtTi3EY+bHXBPiheOF42OuKanN2Yd4zLzNbLy7mC8ch7jNLMQhDvHCcYjbzEIc4pLalnqb2fj54jHzY64J8cLxwnGbWYhDHOI5+xCPmbeZjXcX84XjELeZhTjEIV44DnGbWYhDXFLbUm8zGz9fPGZ+zDUhXjheOG4zC3GIQzxnH+It9RCX1EJ8+/P9DHGbWYhDHOKF4xC3mYU4xCW1heMQl9RCHOIQ38a1IW4zC/E47zILcYhDPGcf4i31EJfUQnz78/0McZtZiEMc4oXjELeZhTjEJbWF4xCX1EIc4hDfxrUhbjML8TjvMgtxiEM8Zx/iLfVjrrnt+eKF44XjheOSWohDfPxdF7OSWkktxNt7d1wT4hBvqY+Zt5mFeJxX1EJcUgvxnH2It9SPuea254sXjheOF45LaiEO8fF3XcxKaiW1EG/v3XFNiEO8pT5m3mYW4nFeUQtxSS3Ec/Yh3lJvM1s4DvGWeogXjheOF45LaiEO8fF3XcxKaiW1EG/v/c2spBbiLfUx8zazheOF4xCX1EJcUgvxnH2It9TbzBaOQ7ylHuKF44XjheOSWohDfPxdF7OSWkktxNt7fzMrqYV4S33MvM1s4XjhOMQltRCX1EI8Zx/iLfUQj5mHeEs9xG1mIR7fqxbit71fl1mIX773N9eEeOE4xFvqIW4zWzheOA5xSe1lruuzC/GWeojHzEO8pR7iNrMQj+9VC/Hb3q/LLMQv3/uba0K8cBziLfUQt5ktHC8ch7ik9jLX9dmFeEs9xCW1EP/Z838zC/E//66LWYjbzEJ82/ddxCFeOA7xlnqI28xCXFILcUntZa7rswvxlnqIS2oh/rPn/2YW4n/+XRezELeZhfi277uIQ7xwHOIt9RC3mYW4pBbiktrLXNdnF+Ix8zaz4+erh7j9HuoLxyEuqYX4+LsuZsdcs6XeZlZSC/HC8Zj5MdeU1BaOQzxmHuI5+xCPmbeZHT9fPcTt91BfOA5xSS3Ex991MTvmmi31NrOSWogXjsfMj7mmpLZwHOIx8xDP2Yd4zLzN7Pj56iFuv4f6wnGIS2ohPv6ui9kx12ypt5mV1EK8cDxmfsw1JbWF4xCPmYd4zj7EY+ZtZsfPVw9x+z3UF45DXFIL8fF3XcyOuWZLvc2spBbiheMx82OuKaktHId4zDzEj8fj8Xg8/tDPz/9674FB4Av7mAAAAABJRU5ErkJggg=='},
+        rainbow={width=138,height=28,data='iVBORw0KGgoAAAANSUhEUgAAAIoAAAAcCAYAAAC+uCc6AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAK+SURBVGhD7dBBbuQwDEXB3P/SM5vy10IgaNqGg6C7dnmiaHV+vr6+vp737yHWvcZnQ36c9SF/Hr//Nute47MhP876kD+P33+bda/x2ZAfZ33In8fvv8261/hsyI+zPuTP4/eHPOZ6yH+enxPy5/H7Qx5zPeQ/z88J+fP4/SGPuR5yyGOubxyH/Np3nmZ9ydjv8Y6Qx1wPOeQx1zeOQ37tO0+zvmTs93jHbdaVjI25vnEc8mvfOcglYy3jJWMbxyGPuR7yot9mXcnYmOsbxyG/9p2DXDLWMl4ytnEc8pjrIS/6bdY9zvqQx71jPOR2n1wytnEccslYyOM9FddDXvTbrHuc9SE//o8zHnK7Ty4Z2zgOuWQs5PGeiushL3rIJWMhj7k+5nr5Dn+G3DIecvtOYyVjIY/faSzk8Z6K6yEvesglYyGPuT7mevkOf4bcMh5y+05jJWMhj99pLOTxnorrIS96yCVjIY+5PuZ6+Q5/htwyHnL7TmMlYyGP32ks5NN7HIcccsiLHnLJWMhjro+5Xr7DnyG3jIfcvtNYyVjI43caC/n0Hschhxzyood8mmshbxyH3DIe8rh3jId8ed/BtZDHe42FfHqP45BDDnnRQz7NtZA3jkNuGQ953DvGQ7687+BayOO9xkI+vcdxyCGHvOghn+ZayBvHIbeMhzzuHeMhX953cC3k8V5jIZ/e4zjkkENe9JBPcy3kjeOQW8ZDHveO8ZAv7zu4FvJ4r7GQT+9xHHLIIS96yJdZE/LG8Zjr5Xf8GXLLeMiX33mwpmW8ZKxl/DbrFj3ky6wJeeN4zPXyO/4MuWU85MvvPFjTMl4y1jJ+m3WLHvJl1oS8cTzmevkdf4bcMh7y5XcerGkZLxlrGb/NukUP+TJrQt44HnO9/I4/Q24ZD/nyOw/WtIyXjLWM32bd19fX12N+fv4D7uAs7aIGXtcAAAAASUVORK5CYII='},
+        silver={width=90,height=28,data='iVBORw0KGgoAAAANSUhEUgAAAFoAAAAcCAYAAADhqahzAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAGiSURBVGhD7dBBboRADEXBuf+lk03xF2MhbGgRKVDL5zYNfF6vZ/g5yXrZl3f7Y/kPY9bfH93lP4xZf390l/8wZv390Xt8d8jLeXzIz+G7Q17O40N+Dt8d8mkeE/Kf/2jXtllrf8/GuDIP+TSPCXn5PVOubbPW/p6N8THnDzleGIe82+/i2jZr472N9X3OHXK8MA75/dHfnDvkeGEc8rh3WQt5/FzHQi59Y1wYH3+Hc4ccL4xDHvcuayGPn+tYyKVvjAvj8Xfs8ryQl/UuayGXPuUxl9/vMveGvKx3WQu59CmPufx+l7k35GW9y1rIpR+xVhiHfB/3hrysd1kLufQj1grjkO/j3pDH/ZtxyCGHXBiHPGY95Pu4N+Rx/2YccsghF8Yhj1kP+T7uDXncvxmHHHLIhXHIuxwLefyc5dwb8uUXNg455JAL45B3ORby+Dm77I9ZL4xDPv3Cjoc8Zr3N2rL7xy+wsV4Yh3z6hR0Pecx6m7Vl949fYGO9MA759As7HvKY9TZry+4fv8DGemEc8ukXdjzkMett1pbd/3r9B5/PL5VzNHWy6yc2AAAAAElFTkSuQmCC'},
+        golden={width=106,height=28,data='iVBORw0KGgoAAAANSUhEUgAAAGoAAAAcCAYAAACJWipLAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAIZSURBVGhD7c5BjuMwDATA/P/Tu5dS+0AQMpNMnACuY7NJ6XG73T7h35s49zbOhnjMeoh/j/+/zLm3cTbEY9ZD/Hv8/2XOvY2zIR6zHuLf4/8vc+5tnA3xmPUQfz//DfHX8b0Qj1kP8ffz3xB/Hd8L8Zj1EH8//w3xn/FMS60wDnFhfJq1wvg0a+O9xXpPL8R/xjMttcI4xIXxadYK49OsjfcW6z29EG+pt9QK45ZaYRziwvg0a4XxadbGe4v1nl6It9RbaoVxS60wDnFhfJq1wvg0a+O9xXpPL8Rb6i218X21EI/zjlqIL7uzqIf4IA/xlnpLbXxfLcTjvKMW4svuLOohPshDPGY9xOP7aiH++P0pZ8b/WdRDfJCHeMx6iMf31UL88ftTzoz/s6iH+CAP8Zj1EI/vq4X44/d3rBXGId5SD/FBHuIx6yEe31cL8cfv71grjEO8pR7igzzEY9ZDPL6vFuLL7k9ZD/GWeogP8hCPWQ/x+L5aiC+7P2U9xFvqIT7IQzxmPcTj+2ohvux+Ry3E4zuLeogP8hCPWQ/x+L5aiC+731EL8fjOoh7int6Y9S31llphHOKn/7s4UxifZq395456iHt6Y9a31FtqhXGIn/7v4kxhfJq19p876iHu6Y1Z31JvqRXGIX76v4szhfFp1tp/7qiHuKc3Zn1LvaVWGIf46f8uzhTGp1lr/7mjHuLb7fZGj8d/InGwMdQW1FoAAAAASUVORK5CYII='}
+    }
+    local mutationSprites={}
+    do
+        local asset=getcustomasset or getsynasset
+        if type(asset)=='function' and type(writefile)=='function' then
+            local alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+            local values={}
+            for i=1,#alphabet do values[alphabet:sub(i,i)]=i-1 end
+            local function decode(value)
+                local out,buffer,bits={},0,0
+                for i=1,#value do
+                    local digit=values[value:sub(i,i)]
+                    if digit then
+                        buffer=buffer*64+digit;bits+=6
+                        if bits>=8 then
+                            bits-=8;out[#out+1]=string.char(math.floor(buffer/2^bits)%256);buffer=buffer%2^bits
+                        end
+                    end
+                end
+                return table.concat(out)
+            end
+            for key,spec in pairs(mutationSpriteData) do
+                local ok,uri=pcall(function()
+                    local filename='tenshi_minecraft_'..key..'_v1.png'
+                    writefile(filename,decode(spec.data))
+                    return asset(filename)
+                end)
+                if ok and type(uri)=='string' then mutationSprites[key]={image=uri,width=spec.width,height=spec.height} end
+            end
+        end
+    end
+    local buttonFontLookup={
+        ["PREMIUM"]='varesco_b08',
+        ["JOINING..."]='varesco_b12',
+        ["MATCHMAKING..."]='varesco_b13',
+        ["MIN RARITY: Eternal"]='varesco_b05',
+        ["MIN RARITY: Any"]='varesco_b07',
+        ["MIN RARITY: Secret"]='varesco_b04',
+        ["MIN RARITY: Cosmic"]='varesco_b03',
+        ["PREMIUM ON"]='varesco_b09',
+        ["JOIN RANDOM SERVER"]='varesco_b10',
+        ["MIN RARITY: Mythic"]='varesco_b02',
+        ["TRY AGAIN"]='varesco_b14',
+        ["ALL SERVERS"]='varesco_b00',
+        ["MY SERVER"]='varesco_b01',
+        ["MIN RARITY: Divine"]='varesco_b06',
+        ["SEARCHING..."]='varesco_b11',
+        ["HERE"]='kindly_b01',
+        ["JOIN"]='kindly_b00',
+        ["TAKEN"]='kindly_b02',
+    }
+    local function applyButtonFont(button)
+        local glyph=D.make('ImageLabel',{Name='CustomButtonFont',Image='',ImageTransparency=1,BackgroundTransparency=1,ImageColor3=Color3.new(1,1,1),AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.new(1,-14,0,20),ScaleType=Enum.ScaleType.Fit,Active=false},button)
+        local function ready()
+            local key=buttonFontLookup[button.Text]
+            local spec=key and mutationSprites[key]
+            if spec and glyph.Image==spec.image and glyph.IsLoaded then
+                button.TextTransparency=1;glyph.ImageTransparency=0
+            end
+        end
+        local function refreshFont()
+            button.TextTransparency=0;glyph.ImageTransparency=1
+            local key=buttonFontLookup[button.Text]
+            local spec=key and mutationSprites[key]
+            if not spec then glyph.Image='';return end
+            glyph.Image=spec.image
+            ready()
+        end
+        button:GetPropertyChangedSignal('Text'):Connect(refreshFont)
+        glyph:GetPropertyChangedSignal('IsLoaded'):Connect(ready)
+        refreshFont()
+    end
+    for _,button in ipairs({scope,myScope,unlock,randomJoin}) do applyButtonFont(button) end
+    if mutationSprites.title then
+        local spec=mutationSprites.title
+        local glyph=D.make('ImageLabel',{Name='MinecraftTitle',Image=spec.image,ImageTransparency=1,BackgroundTransparency=1,ImageColor3=Color3.new(1,1,1),Size=UDim2.fromOffset(math.min(201,math.ceil(spec.width/spec.height*22)),22),Position=UDim2.new(0,0,0.5,-11),ScaleType=Enum.ScaleType.Fit,Active=false},heading)
+        pcall(function() glyph.ResampleMode=Enum.ResamplerMode.Pixelated end)
+        local function ready()
+            if glyph.IsLoaded then heading.TextTransparency=1;glyph.ImageTransparency=0 end
+        end
+        glyph:GetPropertyChangedSignal('IsLoaded'):Connect(ready)
+        ready()
+    end
+    local mutationPalettes={
+        discord={Color3.fromRGB(163,190,242),Color3.fromRGB(111,148,189),Color3.fromRGB(113,116,156),Color3.fromRGB(55,57,88),Color3.fromRGB(69,71,73)},
+        golden={Color3.fromRGB(206,164,0),Color3.fromRGB(222,173,0),Color3.fromRGB(239,182,0),Color3.fromRGB(255,191,0),Color3.fromRGB(254,209,46),Color3.fromRGB(253,227,92)},
+        rainbow={Color3.fromRGB(255,0,0),Color3.fromRGB(255,113,0),Color3.fromRGB(255,169,0),Color3.fromRGB(255,248,0),Color3.fromRGB(139,255,0),Color3.fromRGB(0,255,7),Color3.fromRGB(0,255,154)},
+        silver={Color3.fromRGB(71,71,71),Color3.fromRGB(104,104,104),Color3.fromRGB(137,137,137),Color3.fromRGB(170,170,170),Color3.fromRGB(137,137,137),Color3.fromRGB(104,104,104),Color3.fromRGB(71,71,71)}
+    }
+    local mutationGradients={golden={},silver={},rainbow={},discord={}}
+    local function mutationSequence(palette,now)
+        local phase=(now/4)%1
+        local points={}
+        for i=0,16 do
+            local sample=((i/16-phase)%1)*#palette
+            local index=math.floor(sample)
+            points[#points+1]=ColorSequenceKeypoint.new(i/16,palette[index+1]:Lerp(palette[(index+1)%#palette+1],sample-index))
+        end
+        return ColorSequence.new(points)
+    end
+    local function mutationStyle(object,name)
+        local key=name:lower()
+        if key=='gold' then key='golden' end
+        local palette=mutationPalettes[key]
+        if not palette then return end
+        if object:IsA('TextLabel') then
+            object.TextColor3=Color3.new(1,1,1);object.TextStrokeTransparency=1
+        else object.ImageColor3=Color3.new(1,1,1) end
+        local gradient=D.make('UIGradient',{Color=mutationSequence(palette,os.clock()),Rotation=0},object)
+        local bucket=mutationGradients[key];bucket[#bucket+1]=gradient
+    end
+    mutationStyle(discordSubtitle,'discord')
+    local filterPalettes={
+        cosmic={Color3.fromRGB(67,37,239),Color3.fromRGB(113,29,255),Color3.fromRGB(90,37,230),Color3.fromRGB(67,44,204),Color3.fromRGB(63,44,244),Color3.fromRGB(41,12,217)},
+        secret={Color3.fromRGB(40,40,40),Color3.fromRGB(66,62,59),Color3.fromRGB(90,90,87),Color3.fromRGB(118,124,118),Color3.fromRGB(144,152,152),Color3.fromRGB(195,195,201)},
+        eternal={Color3.fromRGB(143,203,193),Color3.fromRGB(179,236,227),Color3.fromRGB(192,236,229),Color3.fromRGB(205,236,230),Color3.fromRGB(216,236,232),Color3.fromRGB(227,236,234),Color3.fromRGB(182,165,198),Color3.fromRGB(82,28,125),Color3.fromRGB(141,92,164),Color3.fromRGB(183,125,193),Color3.fromRGB(216,151,220),Color3.fromRGB(230,171,234),Color3.fromRGB(227,187,236),Color3.fromRGB(218,202,236),Color3.fromRGB(212,216,236)}
+    }
+    local filterWords=D.make('Frame',{Name='RarityFontParts',AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(1,20),BackgroundTransparency=1,Active=false},rarity)
+    local filterPrefix=D.make('ImageLabel',{Image='',ImageTransparency=1,BackgroundTransparency=1,ImageColor3=Color3.new(1,1,1),ScaleType=Enum.ScaleType.Fit,Active=false},filterWords)
+    local filterWord=D.make('ImageLabel',{Image='',ImageTransparency=1,BackgroundTransparency=1,ImageColor3=Color3.new(1,1,1),ScaleType=Enum.ScaleType.Fit,Active=false},filterWords)
+    local filterGradient=D.make('UIGradient',{Enabled=false,Rotation=0},filterWord)
+    local filterName=rarityOptions[rarityIndex].name:lower()
+    local function updateFilterColor(now)
+        local palette=filterPalettes[filterName]
+        if palette then
+            filterWord.ImageColor3=Color3.new(1,1,1);filterGradient.Enabled=true
+            filterGradient.Color=mutationSequence(palette,now)
+        else
+            filterGradient.Enabled=false;filterWord.ImageColor3=rarityColors[filterName] or Color3.new(1,1,1)
+        end
+    end
+    local function filterReady()
+        local prefix=mutationSprites.filter_prefix
+        local word=mutationSprites['filter_'..filterName]
+        if prefix and word and filterPrefix.Image==prefix.image and filterWord.Image==word.image and filterPrefix.IsLoaded and filterWord.IsLoaded then
+            rarity.TextTransparency=1;filterPrefix.ImageTransparency=0;filterWord.ImageTransparency=0
+        end
+    end
+    local function refreshFilterWord()
+        filterName=rarityOptions[rarityIndex].name:lower()
+        filterGradient.Rotation=filterName=='eternal' and 90 or 0
+        rarity.TextTransparency=0;filterPrefix.ImageTransparency=1;filterWord.ImageTransparency=1
+        local prefix=mutationSprites.filter_prefix
+        local word=mutationSprites['filter_'..filterName]
+        if not prefix or not word then filterWords.Visible=false;return end
+        filterWords.Visible=true
+        local total=prefix.width+word.width+12
+        local panelWidth=panel.Size.X.Offset>0 and panel.Size.X.Offset or 402
+        local available=math.max(20,panelWidth*rarity.Size.X.Scale+rarity.Size.X.Offset-14)
+        local width=math.min(available,total/prefix.height*20)
+        filterWords.Size=UDim2.fromOffset(width,width*prefix.height/total)
+        filterPrefix.Position=UDim2.new();filterPrefix.Size=UDim2.new(prefix.width/total,0,1,0)
+        filterWord.Position=UDim2.new((prefix.width+12)/total,0,0,0);filterWord.Size=UDim2.new(word.width/total,0,1,0)
+        filterPrefix.Image=prefix.image;filterWord.Image=word.image
+        updateFilterColor(os.clock());filterReady()
+    end
+    filterPrefix:GetPropertyChangedSignal('IsLoaded'):Connect(filterReady)
+    filterWord:GetPropertyChangedSignal('IsLoaded'):Connect(filterReady)
+    rarity:GetPropertyChangedSignal('Text'):Connect(refreshFilterWord)
+    refreshFilterWord()
+    local rarityGradientBuckets={cosmic={},secret={},eternal={}}
+    local function styleRarityLabel(label,key)
+        local palette=filterPalettes[key]
+        if not palette then return end
+        label.TextColor3=Color3.new(1,1,1)
+        if key=='secret' then label.TextStrokeColor3=Color3.new(0,0,0);label.TextStrokeTransparency=0.25 end
+        local gradient=D.make('UIGradient',{Color=mutationSequence(palette,os.clock()),Rotation=key=='eternal' and 90 or 0},label)
+        rarityGradientBuckets[key][gradient]=true
+    end
+    local lastMutationUpdate=0
+    local mutationMotion=game:GetService('RunService').Heartbeat:Connect(function()
+        local now=os.clock()
+        if now-lastMutationUpdate<1/20 then return end
+        lastMutationUpdate=now
+        updateFilterColor(now)
+        for key,bucket in pairs(rarityGradientBuckets) do
+            if next(bucket) then
+                local colors=mutationSequence(filterPalettes[key],now)
+                for gradient in pairs(bucket) do
+                    if gradient.Parent then gradient.Color=colors else bucket[gradient]=nil end
+                end
+            end
+        end
+        for key,bucket in pairs(mutationGradients) do
+            if #bucket>0 then
+                local colors=mutationSequence(mutationPalettes[key],now)
+                for i=#bucket,1,-1 do
+                    local gradient=bucket[i]
+                    if not gradient.Parent then table.remove(bucket,i) else gradient.Color=colors end
+                end
+            end
+        end
+    end)
+    D.gui.Destroying:Connect(function() mutationMotion:Disconnect() end)
+    local function mutationWidth(name,textService,available)
+        local spec=mutationSpriteData[name:lower()]
+        if spec then return math.min(available,math.ceil(spec.width/spec.height*20)+6) end
+        return math.min(available,math.ceil(textService:GetTextSize(name,18,Enum.Font.Arcade,Vector2.new(1000,26)).X)+8)
+    end
+    local function mutationWord(row,name,position,width)
+        local word=D.label(row,name,position,UDim2.fromOffset(width,26),Color3.fromRGB(245,210,125),18)
+        word.Font=Enum.Font.Arcade
+        word.TextTruncate=Enum.TextTruncate.None;word.TextScaled=true;word.TextWrapped=false
+        D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=18},word)
+        mutationStyle(word,name)
+        local spec=mutationSprites[name:lower()]
+        if spec then
+            local glyph=D.make('ImageLabel',{Image=spec.image,ImageTransparency=1,BackgroundTransparency=1,ImageColor3=Color3.new(1,1,1),Size=UDim2.fromScale(1,1),Position=UDim2.new(),ScaleType=Enum.ScaleType.Fit,Active=false},word)
+            pcall(function() glyph.ResampleMode=Enum.ResamplerMode.Pixelated end)
+            mutationStyle(glyph,name)
+            local function ready()
+                if glyph.IsLoaded then word.TextTransparency=1;glyph.ImageTransparency=0 end
+            end
+            glyph:GetPropertyChangedSignal('IsLoaded'):Connect(ready)
+            ready()
+        end
+        return word
+    end
+    local ageLabels={}
+    local function resetAgeText(cycle)
+        if not cycle or type(cycle.remaining)~='number' or cycle.remaining~=cycle.remaining then return '--' end
+        local remaining=math.clamp(math.ceil(cycle.remaining),0,300)
+        return tostring(math.floor((300-remaining)/60))..'m ago'
+    end
+    local function updateSpawnAges(cycle)
+        local text=resetAgeText(cycle)
+        for _,item in ipairs(ageLabels) do
+            if item.label.Parent and item.label.Text~=text then item.label.Text=text end
+        end
+    end
+
+    local cardsByKey={}
+    local rankWidthCache={}
+    local raritySizeCache={}
+    local function cardSignature(entry)
+        return Http:JSONEncode({tostring(entry.rarity),tostring(entry.mutations),tostring(entry.mutationText),tostring(entry.traitsKnown),tostring(entry.isEvent),tostring(entry.source)})
+    end
+    local function updateCard(card,entry,i)
+        local rankText='#'..tostring(entry.displayRank or entry.globalRank or i)
+        if card.rankLabel.Text~=rankText then
+            local width=rankWidthCache[rankText]
+            if not width then
+                width=math.ceil(game:GetService('TextService'):GetTextSize(rankText,22,Enum.Font.GothamBold,Vector2.new(1000,28)).X)+4
+                rankWidthCache[rankText]=width
+            end
+            card.rankLabel.Text=rankText;card.rankLabel.Size=UDim2.fromOffset(width,28)
+            card.nameLabel.Position=UDim2.fromOffset(100+width,4);card.nameLabel.Size=UDim2.new(1,-110-width,0,28)
+        end
+        if card.nameLabel.Text~=tostring(entry.name) then card.nameLabel.Text=tostring(entry.name) end
+        if card.icon.Image~=(entry.icon or '') then card.icon.Image=entry.icon or '' end
+        if not card.financeReady or card.rate~=entry.rate or card.missingRate~=entry.missingRate then
+            card.incomeLabel.Text=entry.missingRate and 'Income unavailable' or D.money(entry.rate)
+            card.rate=entry.rate;card.missingRate=entry.missingRate
+        end
+        if not card.financeReady or card.scale~=entry.scale or card.weight~=entry.weight then
+            local text,color=weightPresentation(entry)
+            local isScale=type(entry.weight)~='number' and type(entry.scale)=='number'
+            card.weightLabel.Text=text;card.weightLabel.TextColor3=color
+            card.weightLabel.Font=isScale and Enum.Font.GothamBlack or Enum.Font.GothamBold
+            card.weightLabel.TextSize=isScale and 18 or 14
+            card.weightLimit.MaxTextSize=isScale and 18 or 14
+            card.scale=entry.scale;card.weight=entry.weight
+        end
+        card.financeReady=true
+        local here=entry.isLocal or entry.jobId==game.JobId
+        local text=entry.unavailable and 'TAKEN' or here and 'HERE' or 'JOIN'
+        if card.join.Text~=text then card.join.Text=text end
+        if card.unavailable~=entry.unavailable or card.here~=here then
+            card.join.BackgroundColor3=entry.unavailable and Color3.fromRGB(190,45,55) or here and Color3.fromRGB(86,90,100) or Color3.fromRGB(40,160,85)
+            card.join.Active=not entry.unavailable;card.join.AutoButtonColor=not entry.unavailable;card.join.Selectable=not entry.unavailable
+            card.unavailable=entry.unavailable;card.here=here
+        end
+    end
+    local function render()
+        local now=(os.clock()+clockOffset)*1000
+        local resetAge=resetAgeText(cycleInfo())
+        local entries={}
+        local source,seen={},{}
+        if not othersOnly then
+            for _,e in ipairs(feed) do
+                if (e.jobId~=game.JobId or e.unavailable) and type(e.expiresAt)=='number' and e.expiresAt>now then source[#source+1]=e;seen[e.key]=true end
+            end
+        end
+            local localCycle=cycleInfo()
+            for _,e in ipairs(D.entries()) do
+                if (e.rate or 0)>=minRate and (e.tier or 0)>=minRank then
+                    local key=game.PlaceId..':'..game.JobId..':'..tostring(e.uid or e.key)
+                    if not seen[key] then
+                        seen[key]=true
+                        source[#source+1]={key=key,name=e.name,rate=e.rate or 0,missingRate=e.rate==nil,scale=e.scale,weight=e.weight,icon=e.icon,rarity=e.rarity,mutations=e.mutationText,traitsKnown=e.traitsKnown~=false,area=e.areaKey or e.area,model=e.model,isLocal=true,source=e.isEvent and 'event' or 'field',estimated=e.estimated or e.unmutatedRate~=nil,placeId=game.PlaceId,jobId=game.JobId,expiresAt=now+5000,seenAt=0,spawnedAt=not e.isEvent and localCycle and localCycle.respawnAt or nil,spawnTimeKnown=not e.isEvent and localCycle~=nil and type(localCycle.respawnAt)=='number'}
+                    end
+                end
+            end
+            table.sort(source,function(a,b) if a.rate~=b.rate then return a.rate>b.rate end; return a.key<b.key end)
+            local limit=PREMIUM_EDITION and 10 or 30
+            while #source>limit do source[#source]=nil end
+            for i,e in ipairs(source) do e.displayRank=i end
+        for _,entry in ipairs(source) do
+            if type(entry)=='table' and type(entry.expiresAt)=='number' and now<entry.expiresAt and type(entry.rate)=='number' and type(entry.jobId)=='string' then
+                entries[#entries+1]=entry
+            end
+        end
+        -- Keep the old canvas extent while rebuilding so Roblox does not clamp
+        -- the scroll position to zero when the rows are temporarily removed.
+        local savedScroll=list.CanvasPosition
+        local canvasHeight=#entries==0 and 40 or 0
+        ageLabels={}
+        local wanted={}
+        for _,entry in ipairs(entries) do wanted[entry.key]=true end
+        for key,card in pairs(cardsByKey) do
+            if not wanted[key] then card.row:Destroy();cardsByKey[key]=nil end
+        end
+        aliveMessage.Visible=#entries==0
+        aliveMessage.Text=othersOnly and 'No matching eggs in this server' or PREMIUM_EDITION and viewerCode=='' and 'Enter your Premium access code' or 'No matching eggs right now'
+        for i,entry in ipairs(entries) do
+            local signature=cardSignature(entry)
+            local card=cardsByKey[entry.key]
+            if not card or not card.row.Parent or card.signature~=signature then
+            if card and card.row.Parent then card.row:Destroy() end
+            card={entry=entry,signature=signature}
+            local row=D.make('Frame',{Size=UDim2.new(1,-12,0,90),LayoutOrder=i,BackgroundColor3=Color3.fromRGB(19,24,43),BackgroundTransparency=0.22},list)
+            card.row=row
+            D.make('UICorner',{CornerRadius=UDim.new(0,6)},row)
+            D.make('UIStroke',{Color=Color3.fromRGB(85,95,125),Thickness=1},row)
+            card.icon=D.make('ImageLabel',{Name='PetIcon',Image=entry.icon or '',BackgroundTransparency=1,Size=UDim2.fromOffset(88,88),Position=UDim2.fromOffset(4,4),ScaleType=Enum.ScaleType.Fit},row)
+            local rarityKey=tostring(entry.rarity):lower():gsub('%s+','')
+            local nameColor=rarityColors[rarityKey] or Color3.fromRGB(225,225,235)
+            local rankText='#'..tostring(entry.displayRank or entry.globalRank or i)
+            local textService=game:GetService('TextService')
+            local rankWidth=rankWidthCache[rankText]
+            if not rankWidth then
+                rankWidth=math.ceil(textService:GetTextSize(rankText,22,Enum.Font.GothamBold,Vector2.new(1000,28)).X)+4
+                rankWidthCache[rankText]=rankWidth
+            end
+            local rankLabel=D.label(row,rankText,UDim2.fromOffset(100,4),UDim2.fromOffset(rankWidth,28),Color3.fromRGB(220,224,235),22)
+            card.rankLabel=rankLabel
+            rankLabel.TextTruncate=Enum.TextTruncate.None
+            local nameLabel=D.label(row,tostring(entry.name),UDim2.fromOffset(100+rankWidth,4),UDim2.new(1,-110-rankWidth,0,28),nameColor,21)
+            card.nameLabel=nameLabel
+            local rarityCell=D.make('Frame',{Name='RarityCell',Position=UDim2.fromOffset(4,92),Size=UDim2.fromOffset(92,28),BackgroundTransparency=1,ClipsDescendants=true},row)
+            local rarityText=tostring(entry.rarity)
+            local rarityTextSize=raritySizeCache[rarityText]
+            if not rarityTextSize then
+                rarityTextSize=22
+                while rarityTextSize>1 do
+                    local bounds=textService:GetTextSize(rarityText,rarityTextSize,Enum.Font.GothamBlack,Vector2.new(1000,1000))
+                    if bounds.X<=82 and bounds.Y<=24 then break end
+                    rarityTextSize-=1
+                end
+                raritySizeCache[rarityText]=rarityTextSize
+            end
+            local rarityLabel=D.label(rarityCell,rarityText,UDim2.fromOffset(5,2),UDim2.new(1,-10,1,-4),nameColor,rarityTextSize)
+            rarityLabel.Font=Enum.Font.GothamBlack
+            rarityLabel.TextXAlignment=Enum.TextXAlignment.Center
+            rarityLabel.TextYAlignment=Enum.TextYAlignment.Center
+            rarityLabel.TextTruncate=Enum.TextTruncate.None
+            rarityLabel.TextScaled=false
+            rarityLabel.TextWrapped=false
+            styleRarityLabel(nameLabel,rarityKey)
+            local finance=D.make('Frame',{Name='IncomeAndWeight',Position=UDim2.fromOffset(100,44),Size=UDim2.new(1,-208,0,24),BackgroundTransparency=1},row)
+            local incomeCell=D.make('Frame',{Name='IncomeCell',Position=UDim2.new(),Size=UDim2.new(0.59,-4,1,0),BackgroundTransparency=1,ClipsDescendants=true},finance)
+            local incomeLabel=D.label(incomeCell,entry.missingRate and 'Income unavailable' or D.money(entry.rate),UDim2.new(),UDim2.fromScale(1,1),Color3.fromRGB(135,240,140),18)
+            card.incomeLabel=incomeLabel
+            incomeLabel.Font=Enum.Font.GothamBlack
+            incomeLabel.TextTruncate=Enum.TextTruncate.None
+            incomeLabel.TextScaled=true
+            incomeLabel.TextWrapped=false
+            D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=18},incomeLabel)
+            local weightText,weightColor=weightPresentation(entry)
+            local isScale=type(entry.weight)~='number' and type(entry.scale)=='number'
+            local weightCell=D.make('Frame',{Name='WeightCell',Position=UDim2.new(0.59,4,0,-6),Size=UDim2.new(0.41,-4,1,0),BackgroundTransparency=1,ClipsDescendants=true},finance)
+            local weightLabel=D.label(weightCell,weightText,UDim2.new(),UDim2.fromScale(1,1),weightColor,isScale and 18 or 14)
+            card.weightLabel=weightLabel
+            weightLabel.Font=isScale and Enum.Font.GothamBlack or Enum.Font.GothamBold
+            weightLabel.TextTruncate=Enum.TextTruncate.None
+            weightLabel.TextScaled=true
+            weightLabel.TextWrapped=false
+            card.weightLimit=D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=isScale and 18 or 14},weightLabel)
+            local ageLabel=D.label(finance,resetAge,UDim2.new(0.59,4,0,24),UDim2.new(0.41,-4,0,16),Color3.fromRGB(210,216,230),13)
+            ageLabel.Name='SpawnAge';ageLabel.TextScaled=true;ageLabel.TextWrapped=false;ageLabel.TextTruncate=Enum.TextTruncate.None
+            D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=13},ageLabel)
+            card.ageLabel=ageLabel
+            rarityLabel.TextColor3=nameLabel.TextColor3
+            local nameGradient=nameLabel:FindFirstChildOfClass('UIGradient')
+            if nameGradient then
+                local gradient=nameGradient:Clone();gradient.Parent=rarityLabel
+                rarityGradientBuckets[rarityKey][gradient]=true
+            end
+
+            local names=mutationNames(entry)
+            local contentWidth=math.max(100,panel.Size.X.Offset-138)
+            local mutationX,mutationY=0,0
+            for _,name in ipairs(names) do
+                local width=mutationWidth(name,textService,contentWidth)
+                if mutationX>0 and mutationX+width>contentWidth then mutationX=0;mutationY+=28 end
+                mutationWord(row,name,UDim2.fromOffset(100+mutationX,84+mutationY),width)
+                mutationX+=width+5
+            end
+            local mutationHeight=#names>0 and mutationY+26 or 0
+            row.Size=UDim2.new(1,-12,0,math.max(128,84+mutationHeight+8))
+            local here=entry.isLocal or entry.jobId==game.JobId
+            local join=D.make('TextButton',{Text=entry.unavailable and 'TAKEN' or here and 'HERE' or 'JOIN',Position=UDim2.new(1,-102,0,37),Size=UDim2.fromOffset(92,42),BackgroundColor3=entry.unavailable and Color3.fromRGB(190,45,55) or here and Color3.fromRGB(86,90,100) or Color3.fromRGB(40,160,85),TextColor3=Color3.new(1,1,1),TextSize=13},row)
+            card.join=join
+            local joinCorner=join:FindFirstChildOfClass('UICorner')
+            if joinCorner then joinCorner.CornerRadius=UDim.new(0.5,0) end
+            applyButtonFont(join)
+            join.Active=not entry.unavailable
+            join.AutoButtonColor=not entry.unavailable
+            join.Selectable=not entry.unavailable
+            join.Activated:Connect(function()
+                local entry=card.entry
+                if entry.unavailable or joining or entry.jobId==game.JobId then return end
+                if (os.clock()+clockOffset)*1000>=entry.expiresAt then queryStatus='Report expired; refreshing'; feedAt=0; return end
+                joining=true; queryStatus='Joining '..entry.name
+                if not config then joining=false;queryStatus='Finder not connected';return end
+                local claim,claimError=network(config.endpoint..'/v1/join','POST',Http:JSONEncode({placeId=entry.placeId,jobId=entry.jobId,uid=entry.uid,reporterId=reporterId}),headers())
+                if claim and claim.unavailable then
+                    joining=false;entry.unavailable=true;lastRender=nil
+                    queryStatus='Egg no longer available';render();return
+                end
+                if not claim or claim.allowed~=true then
+                    joining=false;feedAt=-math.huge
+                    if claim then
+                        for index=#feed,1,-1 do if feed[index].jobId==entry.jobId then table.remove(feed,index) end end
+                    end
+                    queryStatus=claim and 'Server reserved; choose another' or ('Join reservation failed: '..tostring(claimError))
+                    return
+                end
+                D.stopFarm()
+                local ok,err=pcall(function() Teleports:TeleportToPlaceInstance(entry.placeId,entry.jobId,D.player) end)
+                if not ok then queryStatus='Join failed: '..tostring(err); joining=false end
+                task.delay(12,function() joining=false end)
+            end)
+            end
+            card.entry=entry
+            updateCard(card,entry,i)
+            card.row.LayoutOrder=i
+            cardsByKey[entry.key]=card
+            ageLabels[#ageLabels+1]={label=card.ageLabel,entry=entry}
+            canvasHeight+=card.row.Size.Y.Offset+5
+        end
+        list.CanvasSize=UDim2.fromOffset(0,canvasHeight)
+        list.CanvasPosition=savedScroll
+    end
+    refreshButton.Activated:Connect(function()
+        if refreshing or not active then return end
+        refreshing=true;refreshButton.Text='REFRESHING…'
+        task.spawn(function()
+            local ok,err=pcall(function()
+                local deadline=os.clock()+12
+                while active and networkBusy and os.clock()<deadline do task.wait(0.1) end
+                if not active then return end
+                if networkBusy then error('Network busy; try again') end
+                if not config or os.clock()-configAt>60 then
+                    local loaded,message=loadConfig();if not loaded then error(message) end
+                end
+                if not othersOnly then
+                    local loaded,message=refresh();if not loaded then error(message) end
+                end
+                lastRender=nil;render()
+            end)
+            refreshing=false
+            if active then
+                refreshButton.Text='REFRESH'
+                queryStatus=ok and 'List refreshed' or ('Refresh failed: '..tostring(err))
+            end
+        end)
+    end)
+    local failed=Teleports.TeleportInitFailed:Connect(function(who,_,message) if who==D.player then joining=false; queryStatus='Join failed: '..tostring(message) end end)
+    D.gui.Destroying:Connect(function() active=false; failed:Disconnect();if localHighlight then localHighlight:Destroy() end end)
+    task.spawn(function()
+        local lastReport=-math.huge
+        while active do
+            local ok,err=pcall(function()
+                if refreshing then return end
+                if not config or os.clock()-configAt>60 then local success,message=loadConfig(); if not success then error(message) end end
+                if os.clock()-lastReport>=broadcastInterval then
+                    lastReport=os.clock()
+                    local success,message=report()
+                    reportStatus=message
+                    if not success then warn('Tenshi broadcast: '..tostring(message)) end
+                end
+                if not othersOnly and (not PREMIUM_EDITION or viewerCode~='') and os.clock()-feedAt>=8 then local success,message=refresh(); if not success then queryStatus='Finder: '..tostring(message) end end
+            end)
+            if not ok then reportStatus='BCAST: '..tostring(err);queryStatus=tostring(err);warn('Tenshi broadcast: '..tostring(err)) end
+            task.wait(2)
+        end
+    end)
+    task.spawn(function()
+        while active do
+            status.Text=PREMIUM_EDITION and (tostring(reportStatus)..'\n'..tostring(queryStatus)) or (joining and 'Joining server…' or tostring(reportStatus))
+            local cycle=cycleInfo()
+            if cycle then
+                local seconds=math.max(0,math.ceil(cycle.remaining))
+                resetTimer.Text=cycle.running and string.format('RESET %02d:%02d',math.floor(seconds/60),seconds%60) or 'RESET PAUSED'
+                resetTimer.TextColor3=cycle.running and seconds<=60 and Color3.fromRGB(255,85,85) or cycle.running and seconds<=150 and Color3.fromRGB(255,215,65) or Color3.fromRGB(230,245,255)
+            else
+                resetTimer.Text='RESET --:--'
+                resetTimer.TextColor3=Color3.fromRGB(230,245,255)
+            end
+            sharingNotice.Visible=false
+            local ok=pcall(render)
+            if not ok then queryStatus='Unable to display finder feed' end
+            updateSpawnAges(cycle)
+            task.wait(1)
+        end
+    end)
+end
+
+
+local function run()
+    local EggState=module('Client.EggState')
+    local Assets=module('Data.Assets')
+    local States=module('Shared.Types.AreaEggs').States
+    local mutations,eggRecords,halloweenPets,rarities
+    pcall(function() mutations=module('Shared.Modules.Mutations') end)
+    pcall(function() eggRecords=module('Shared.Util.EggRecords') end)
+    pcall(function() halloweenPets=module('Data.HalloweenPets') end)
+    pcall(function() rarities=module('Data.Rarity') end)
+    assert(type(EggState.ReadFieldEggs)=='function','ReadFieldEggs unavailable')
+    assert(type(Assets.Directory)=='table' and States and States.Slot~=nil,'Game schema changed')
+    local latestEntries={}
+    local function parseValue(text)
+        local amount,suffix=tostring(text):gsub(',',''):match('^%s*%$?%s*(%d+%.?%d*)%s*(%a*)%s*$')
+        local powers={['']=1,k=1e3,m=1e6,b=1e9,t=1e12,qa=1e15,qi=1e18}
+        local factor=suffix and powers[suffix:lower()]
+        if not amount or not factor then return nil end
+        local value=tonumber(amount)*factor
+        return valid(value) and value or nil
+    end
+    local lastScan=0
+    createFinder({gui=gui,localPanel={Visible=false},player=player,make=make,label=label,entries=function() return os.clock()-lastScan<10 and latestEntries or {} end,ready=function() return lastScan>0 and os.clock()-lastScan<10 end,parseValue=parseValue,money=money,stopFarm=function() end})
+    local notified={}
+    local exported={}
+    -- Inspect exported tables only. Never call unknown controller functions/remotes.
+    for _,path in ipairs({'Shared.Types.HalloweenDimension','Shared.Util.HalloweenDimension','Controllers.Game.HalloweenDimensionController'}) do
+        local ok,value=pcall(module,path)
+        if ok and type(value)=='table' then
+            exported[#exported+1]=value
+        end
+    end
+    local function exportedRecords(wanted)
+        local found,visited={},{}
+        local budget=2500
+        local function walk(t,depth)
+            if depth==0 or visited[t] or budget<=0 then return end
+            visited[t]=true
+            local uid=rawget(t,'Uid') or rawget(t,'HalloweenEggUid')
+            if type(uid)=='string' and wanted[uid] then found[uid]=t end
+            for key,value in pairs(t) do
+                budget=budget-1; if budget<0 then break end
+                if type(value)=='table' then
+                    if type(key)=='string' and wanted[key] then found[key]=value end
+                    walk(value,depth-1)
+                end
+            end
+        end
+        for _,value in ipairs(exported) do walk(value,5) end
+        return found
+    end
+    local meshIndex={}
+    local indexedAt=-math.huge
+    local templateCount=0
+    local function matchTemplate(model)
+        -- Manual visual identification, not a unique-template proof:
+        -- user's purple/blue egg matches the Graveyard Brute egg reference.
+        local signature=meshSignature(model)
+        if signature=='70705556141109:85596455133555' then
+            local specs=halloweenPets and halloweenPets.Specs or {}
+            local spec=specs['Graveyard Brute']
+            if spec then return spec,'visual' end
+        end
+        if os.clock()-indexedAt>15 then
+            indexedAt=os.clock(); meshIndex={}; templateCount=0
+            local byName={}
+            for _,spec in pairs(halloweenPets and halloweenPets.Specs or {}) do
+                if type(spec)=='table' and type(spec.EggModel)=='string' then
+                    byName[spec.EggModel]=byName[spec.EggModel] or {}
+                    table.insert(byName[spec.EggModel],spec)
+                end
+            end
+            for _,template in ipairs(RS:GetDescendants()) do
+                local specs=byName[template.Name]
+                if specs and template:IsA('Model') then
+                    local signature=meshSignature(template)
+                    if signature then
+                        templateCount=templateCount+1
+                        meshIndex[signature]=meshIndex[signature] or {}
+                        for _,spec in ipairs(specs) do table.insert(meshIndex[signature],spec) end
+                    end
+                end
+            end
+        end
+        local signature=meshSignature(model)
+        return signature and uniqueMatch(meshIndex[signature] or {}) or nil
+    end
+    while alive do
+        local ok,err=pcall(function()
+            if not halloweenPets or type(halloweenPets.Specs)~='table' then
+                pcall(function() halloweenPets=module('Data.HalloweenPets') end)
+            end
+            if not rarities then pcall(function() rarities=module('Data.Rarity') end) end
+            local snapshot=EggState.ReadFieldEggs()
+            assert(type(snapshot)=='table' and type(snapshot.Records)=='table','Field snapshot unavailable')
+            local eggs,seen={},{}
+            local fieldCount,eventCount,missingIncome=0,0,0
+            for recordKey,record in pairs(snapshot.Records) do
+                -- Only native spawn slots: excludes carried, dropped and placed eggs.
+                if record.State==States.Slot then
+                    local asset=Assets.Directory[record.AssetCategory] or {}
+                    local rarity=asset.Rarity or {}
+                    local uid=record.Uid or recordKey
+                    local model=modelFor(uid)
+                    local scale=numberField(record,{'AssetScale'})
+                    local weight
+                    if eggRecords and type(eggRecords.WeightKg)=='function' then
+                        local good,result=pcall(eggRecords.WeightKg,record)
+                        if good and valid(result) then weight=result end
+                    end
+                    local rate=displayedRate(model)
+                    local estimated=false
+                    if not rate then
+                        rate=computedRate(asset.EarningRate,scale,record.Mutations or {},mutations)
+                        estimated=rate~=nil
+                    end
+                    fieldCount=fieldCount+1
+                    seen[tostring(uid)]=true
+                    local traits,traitsKnown=readTraitNames(record)
+                    table.insert(eggs,{key='field:'..tostring(uid),uid=uid,traitsKnown=traitsKnown,category=record.AssetCategory,areaKey=record.AreaId,worldPos=typeof(record.BottomCFrame)=='CFrame' and record.BottomCFrame.Position or nil,area=tostring(record.AreaId)..' | Mut: '..(#traits>0 and table.concat(traits,', ') or traitsKnown and 'None' or 'UNKNOWN'),model=model,icon=asset.Icon,name=asset.DisplayName or record.AssetCategory or 'Unknown',rarity=rarity.DisplayName or rarity._id or 'Unknown',tier=tonumber(rarity.Rank) or 0,color=typeof(rarity.Color)=='Color3' and rarity.Color or Color3.new(1,1,1),scale=scale,weight=weight,rate=rate,estimated=estimated})
+                end
+            end
+            local dimension=workspace:FindFirstChild('HalloweenDimension')
+            local folder=dimension and dimension:FindFirstChild('WorldEggs')
+            local wanted={}
+            for _,obj in ipairs(folder and folder:GetDescendants() or {}) do
+                if obj:IsA('Model') then local uid=obj:GetAttribute('HalloweenEggUid'); if type(uid)=='string' then wanted[uid]=true end end
+            end
+            local records=exportedRecords(wanted)
+            for _,model in ipairs(folder and folder:GetDescendants() or {}) do
+                if model:IsA('Model') and model:GetAttribute('HalloweenEggCanPickUp')==true then
+                    local category=model:GetAttribute('PreparedSourceName')
+                    local uid=model:GetAttribute('HalloweenEggUid')
+                    local identity=uid and tostring(uid) or model:GetFullName()
+                    if not seen[identity] then
+                        seen[identity]=true
+                        local spec=resolveSpec(halloweenPets and halloweenPets.Specs or {},category,model.Name)
+                        local matchedMesh=false
+                        local matchKind
+                        if not spec then spec,matchKind=matchTemplate(model); matchedMesh=spec~=nil end
+                        spec=spec or {}
+                        local rarity=type(spec.Rarity)=='table' and spec.Rarity or nil
+                        if not rarity and rarities then
+                            local directory=rarities.Rarities or rarities.Directory or {}
+                            rarity=directory[spec.Rarity]
+                        end
+                        rarity=rarity or {}
+                        if not rarity.Rank then
+                            for _,asset in pairs(Assets.Directory) do
+                                local candidate=asset.Rarity
+                                if type(candidate)=='table' and (candidate._id==spec.Rarity or candidate.DisplayName==spec.Rarity) then rarity=candidate; break end
+                            end
+                        end
+                        local scale=numberField(model:GetAttributes(),{'AssetScale','Scale'})
+                        local weight=numberField(model:GetAttributes(),{'WeightKg'})
+                        local rate=displayedRate(model)
+                        local modelScale
+                        pcall(function() local value=model:GetScale(); if valid(value) and value>0 then modelScale=value end end)
+                        local traits,traitsKnown,traitSource=eventTraits(model,records[tostring(uid)])
+                        local calculated=false
+                        local scaleFromModel=false
+                        if not scale then scale=modelScale; scaleFromModel=scale~=nil end
+                        if not rate and traitsKnown then
+                            rate=computedRate(spec.EarningRate,scale,traits,mutations)
+                            calculated=rate~=nil
+                        end
+                        -- GetScale may include the template's scale. Until confirmed against
+                        -- the game's event renderer, this result remains an estimate.
+                        eventCount=eventCount+1
+                        local traitText=traitsKnown and (#traits>0 and table.concat(traits,', ') or 'None (explicit data)') or 'UNKNOWN'
+                        if matchedMesh then traitText=traitText..(matchKind=='visual' and ' [visual ID]' or ' [mesh ID match]') end
+                        table.insert(eggs,{key='event:'..identity,uid=uid,category=spec.Id or category,areaKey='Halloween / '..tostring(model:GetAttribute('Zone') or ''),worldPos=model:GetPivot().Position,isEvent=true,model=model,icon=spec.Icon,name=spec.DisplayName or category or model.Name,area='HW '..tostring(model:GetAttribute('Zone') or '')..' | Mut: '..traitText,rarity=rarity.DisplayName or tostring(spec.Rarity or 'Unknown'),tier=tonumber(rarity.Rank) or 0,color=typeof(rarity.Color)=='Color3' and rarity.Color or Color3.fromRGB(220,140,255),scale=scale,modelScale=modelScale,scaleFromModel=scaleFromModel,weight=weight,rate=rate,estimated=calculated,traitsKnown=traitsKnown})
+                        eggs[#eggs].unresolved=spec.DisplayName==nil or spec.Rarity==nil
+                        eggs[#eggs].traitSource=traitSource
+                        if not traitsKnown then
+                            local candidate=computedRate(spec.EarningRate,scale,{},mutations)
+                            eggs[#eggs].unmutatedRate=candidate
+                        end
+                    end
+                end
+            end
+            -- One numeric value drives both display and ordering.
+            for _,entry in ipairs(eggs) do
+                entry.rate=entry.rate or entry.unmutatedRate
+            end
+            for _,entry in ipairs(eggs) do
+                entry.mutationText=tostring(entry.area or ''):match('Mut:%s*(.*)') or ''
+            end
+            latestEntries=eggs
+            lastScan=os.clock()
+        end)
+        if not ok then warn('NYX Finder scan:',err) end
+        task.wait(2)
+    end
+end
+ task.spawn(function()
+    local ok,err=pcall(run)
+    if not ok then warn('NYX Finder startup:',err) end
+end)) then return false,'Finder configuration unavailable' end
         config=data; configAt=os.clock()
         if false and type(writefile)=='function' then
             local asset=getcustomasset or getsynasset
