@@ -228,7 +228,7 @@ local function createFinder(D)
         return ok and info or nil
     end
     local PREMIUM_EDITION=true
-    local AUTO_KEY=''
+    local AUTO_KEY='LOCAL_PREMIUM'
     local originalMake,originalLabel=D.make,D.label
     D.make=function(class,props,parent)
         if class=='TextButton' or class=='TextBox' then props.Font=Enum.Font.GothamBold;props.TextSize=math.max(props.TextSize or 15,15) end
