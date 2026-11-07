@@ -639,6 +639,7 @@ local function createFinder(D)
     minValueLabel.TextXAlignment=Enum.TextXAlignment.Left
     local minValueInput=D.make('TextBox',{Name='MinAutoJoinValueInput',Text='1B',PlaceholderText='1B - 50B',ClearTextOnFocus=false,Position=UDim2.new(0.64,0,0,3),Size=UDim2.new(0.36,-5,1,-6),BackgroundColor3=Color3.fromRGB(45,90,175),TextColor3=Color3.new(1,1,1),PlaceholderColor3=Color3.fromRGB(205,210,220),TextSize=13,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Center,BorderSizePixel=0},minValueFrame)
     D.make('UICorner',{CornerRadius=UDim.new(0,5)},minValueInput)
+    minValueInput.TextColor3=Color3.fromRGB(255,255,255)
     local function parseAutoJoinMinValue(value)
         if type(value)~='string' then return nil end
         local number=value:match('^%s*(%d+%.?%d*)%s*[bB]%s*$')
