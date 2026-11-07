@@ -304,6 +304,27 @@ local function createFinder(D)
     local queryStatus=''
     local minRate,minRank=1e9,6
     local joining=false
+    local joinedEggSettingKey='UNKNOWNJoinedEggV1'
+    local joinedEgg
+    pcall(function()
+        local saved=Teleports:GetTeleportSetting(joinedEggSettingKey)
+        if type(saved)=='table' and type(saved.uid)=='string' and type(saved.jobId)=='string' and type(saved.placeId)=='number' then joinedEgg=saved end
+    end)
+    local function rememberJoinedEgg(entry)
+        if type(entry)~='table' or entry.uid==nil or tonumber(entry.placeId)==nil or type(entry.jobId)~='string' then return end
+        local saved={
+            placeId=tonumber(entry.placeId),jobId=entry.jobId,uid=tostring(entry.uid),
+            name=tostring(entry.name or 'Unknown egg'),rate=tonumber(entry.rate) or 0,
+            missingRate=entry.missingRate==true,scale=tonumber(entry.scale),weight=tonumber(entry.weight),
+            icon=type(entry.icon)=='string' and entry.icon or '',rarity=tostring(entry.rarity or 'Unknown'),
+            rank=tonumber(entry.rank or entry.localTier) or 0,
+            mutations=tostring(entry.mutations or entry.mutationText or ''),
+            traitsKnown=entry.traitsKnown~=false,area=tostring(entry.area or ''),
+            source=tostring(entry.source or 'field')
+        }
+        joinedEgg=saved
+        pcall(function() Teleports:SetTeleportSetting(joinedEggSettingKey,saved) end)
+    end
     local localHighlight
     local pageOffset,nextOffset=0,nil
     local queryEpoch=0
@@ -846,6 +867,7 @@ local function createFinder(D)
                     queryStatus='Auto Join: joining server #'..tostring(autoJoinCandidateIndex)
                     D.saveGuiBeforeTeleport()
                     D.stopFarm()
+                    rememberJoinedEgg(target)
                     local teleported,teleportError=pcall(function()
                         Teleports:TeleportToPlaceInstance(target.placeId,target.jobId,D.player)
                     end)
@@ -1322,8 +1344,8 @@ local function createFinder(D)
     end
     local function joinPresentation(entry)
         local here=entry.isLocal or entry.jobId==game.JobId
-        if othersOnly and here then return 'HERE',Color3.fromRGB(86,90,100),false end
         if entry.takenConfirmed then return 'TAKEN',Color3.fromRGB(235,55,65),false end
+        if othersOnly and here then return 'HERE',Color3.fromRGB(86,90,100),false end
         if entry.full or entry.unavailable then return 'FULL',Color3.fromRGB(255,75,85),false end
         if here then return 'HERE',Color3.fromRGB(86,90,100),false end
         if joining and joiningKey==entry.key then return 'JOINING...',Color3.fromRGB(40,160,85),false end
@@ -1359,6 +1381,13 @@ local function createFinder(D)
             label.TextSize=size
         end
     end
+    local function takenAgeText(timestamp)
+        local seconds=math.max(0,os.time()-math.floor(tonumber(timestamp) or os.time()))
+        if seconds<60 then return tostring(seconds)..'s' end
+        if seconds<3600 then return tostring(math.floor(seconds/60))..'m' end
+        if seconds<86400 then return tostring(math.floor(seconds/3600))..'h' end
+        return tostring(math.floor(seconds/86400))..'d'
+    end
     local function updateCard(card,entry,i)
         local height=compactCardHeight()
         if card.compactHeight~=height or card.renderScale~=responsiveScale.Scale then
@@ -1383,6 +1412,9 @@ local function createFinder(D)
             card.nameLabel.Position=UDim2.fromOffset(86+width,3);card.nameLabel.Size=UDim2.new(1,-94-width,0,26)
         end
         if card.nameLabel.Text~=tostring(entry.name) then card.nameLabel.Text=tostring(entry.name) end
+        card.nameLabel.Size=UDim2.new(1,(entry.takenConfirmed and -194 or -94)-rankWidth,0,26)
+        card.takenAgeLabel.Visible=entry.takenConfirmed==true and type(entry.takenAt)=='number'
+        card.takenAgeLabel.Text=card.takenAgeLabel.Visible and takenAgeText(entry.takenAt) or ''
         if card.icon.Image~=(entry.icon or '') then card.icon.Image=entry.icon or '' end
         if not card.financeReady or card.rate~=entry.rate or card.missingRate~=entry.missingRate then
             card.incomeLabel.Text=entry.missingRate and 'Income unavailable' or D.money(entry.rate)
@@ -1482,6 +1514,39 @@ local function createFinder(D)
                         source=e.isEvent and 'event' or 'field',estimated=e.estimated or e.unmutatedRate~=nil,
                         placeId=game.PlaceId,jobId=game.JobId,expiresAt=now+5000,seenAt=0,
                         spawnedAt=not e.isEvent and localCycle and localCycle.respawnAt or nil}
+                end
+            end
+            local tracked=D.joinedEgg
+            if tracked and tracked.placeId==game.PlaceId and tracked.jobId==game.JobId then
+                local scan=D.metadata and D.metadata()
+                if type(D.ready)=='function' and D.ready() and scan and type(scan.scanAt)=='number' and tracked._lastScanAt~=scan.scanAt then
+                    tracked._lastScanAt=scan.scanAt
+                    local present=false
+                    for _,e in ipairs(D.entries()) do
+                        if tostring(e.uid or e.key)==tracked.uid then present=true;break end
+                    end
+                    if present then
+                        tracked._missingScans=0
+                    else
+                        tracked._missingScans=(tracked._missingScans or 0)+1
+                    end
+                    if tracked._missingScans>=2 and not tracked.takenAt then
+                        tracked.takenAt=os.time()
+                        local saved=table.clone(tracked)
+                        saved._lastScanAt=nil;saved._missingScans=nil
+                        pcall(function() Teleports:SetTeleportSetting(joinedEggSettingKey,saved) end)
+                    end
+                end
+                if type(tracked.takenAt)=='number' then
+                    source[#source+1]={
+                        key=game.PlaceId..':'..game.JobId..':joined-taken:'..tracked.uid,uid=tracked.uid,
+                        name=tracked.name,rate=tracked.rate or 0,missingRate=tracked.missingRate,
+                        scale=tracked.scale,weight=tracked.weight,icon=tracked.icon,rarity=tracked.rarity,
+                        rank=tracked.rank or 0,localTier=tracked.rank or 0,mutations=tracked.mutations,
+                        traitsKnown=tracked.traitsKnown,area=tracked.area,isLocal=true,source=tracked.source,
+                        placeId=game.PlaceId,jobId=game.JobId,expiresAt=now+5000,seenAt=0,
+                        takenConfirmed=true,takenAt=tracked.takenAt,trackedTaken=true
+                    }
                 end
             end
             if D.gui then pcall(function() D.gui:SetAttribute('TenshiLocalScanCount',#live);D.gui:SetAttribute('TenshiLocalVisibleCount',#source) end) end
@@ -1593,7 +1658,7 @@ local function createFinder(D)
             if not top5PendingCache then saveTop5Cache() end
 
         end
-            table.sort(source,function(a,b) if a.rate~=b.rate then return a.rate>b.rate end; return a.key<b.key end)
+            table.sort(source,function(a,b) if a.trackedTaken~=b.trackedTaken then return a.trackedTaken==true end; if a.rate~=b.rate then return a.rate>b.rate end; return a.key<b.key end)
             local limit=10
             while #source>limit do source[#source]=nil end
             for i,e in ipairs(source) do e.displayRank=i end
@@ -1740,6 +1805,13 @@ local function createFinder(D)
             local here=entry.isLocal or entry.jobId==game.JobId
             local join=D.make('TextButton',{Text=select(1,joinPresentation(entry)),Position=UDim2.new(1,-98,0,29),Size=UDim2.fromOffset(90,32),BackgroundColor3=(entry.full or entry.unavailable) and Color3.fromRGB(255,75,85) or here and Color3.fromRGB(86,90,100) or Color3.fromRGB(40,160,85),TextColor3=Color3.new(1,1,1),TextSize=13},row)
             card.join=join
+            local takenAgeLabel=D.label(row,'',UDim2.new(1,-98,0,10),UDim2.fromOffset(90,16),Color3.fromRGB(245,245,245),12)
+            takenAgeLabel.TextXAlignment=Enum.TextXAlignment.Center
+            takenAgeLabel.TextYAlignment=Enum.TextYAlignment.Center
+            takenAgeLabel.TextStrokeTransparency=0.2
+            takenAgeLabel.ZIndex=join.ZIndex+1
+            takenAgeLabel.Visible=false
+            card.takenAgeLabel=takenAgeLabel
             local joinCorner=join:FindFirstChildOfClass('UICorner')
             if joinCorner then joinCorner.CornerRadius=UDim.new(0,3) end
             join.Font=Enum.Font.FredokaOne
@@ -1795,6 +1867,7 @@ local function createFinder(D)
                 end
                 D.saveGuiBeforeTeleport()
                 D.stopFarm()
+                rememberJoinedEgg(entry)
                 local ok,err=pcall(function() Teleports:TeleportToPlaceInstance(entry.placeId,entry.jobId,D.player) end)
                 if not ok then queryStatus='Join failed: '..tostring(err); joining=false;joiningKey=nil end
                 task.delay(12,function() joining=false;joiningKey=nil end)
