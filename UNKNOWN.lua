@@ -1378,6 +1378,16 @@ local function createFinder(D)
         local remaining=math.clamp(math.ceil(cycle.remaining),0,300)
         return tostring(math.floor((300-remaining)/60))..'m ago'
     end
+    local function takenElapsedText(takenAt,now)
+        if type(takenAt)~='number' or takenAt~=takenAt then return '' end
+        local seconds=math.max(0,math.floor(((now or (os.clock()+clockOffset)*1000)-takenAt)/1000))
+        if seconds<60 then return tostring(seconds)..'s' end
+        local minutes=math.floor(seconds/60)
+        if minutes<60 then return tostring(minutes)..'m' end
+        local hours=math.floor(minutes/60)
+        if hours<24 then return tostring(hours)..'h' end
+        return tostring(math.floor(hours/24))..'d'
+    end
     local function resetAgeColor(cycle)
         local text=resetAgeText(cycle)
         local minutes=tonumber(text:match('^(%d+)m ago$'))
@@ -1388,10 +1398,21 @@ local function createFinder(D)
     local function updateSpawnAges(cycle)
         local text=resetAgeText(cycle)
         local color=resetAgeColor(cycle)
+        local now=(os.clock()+clockOffset)*1000
         for _,item in ipairs(ageLabels) do
             if item.label.Parent then
-                if item.label.Text~=text then item.label.Text=text end
-                if item.label.TextColor3~=color then item.label.TextColor3=color end
+                local displayText=text
+                local displayColor=color
+                if item.entry and item.entry.takenConfirmed and type(item.entry.takenAt)=='number' then
+                    displayText=takenElapsedText(item.entry.takenAt,now)
+                    displayColor=Color3.fromRGB(255,105,115)
+                    if item.join and item.join.Parent then
+                        local joinText='TAKEN — '..displayText
+                        if item.join.Text~=joinText then item.join.Text=joinText end
+                    end
+                end
+                if item.label.Text~=displayText then item.label.Text=displayText end
+                if item.label.TextColor3~=displayColor then item.label.TextColor3=displayColor end
             end
         end
     end
@@ -1597,6 +1618,10 @@ local function createFinder(D)
                 for _,state in ipairs((metadata and metadata.states) or {}) do
                     if tostring(state.uid)==target.uid then targetState=tostring(state.state);break end
                 end
+                if targetState=='Claimed' and not (type(target.takenAt)=='number' and target.takenAt>0) then
+                    target.takenAt=now
+                    pcall(function() Teleports:SetTeleportSetting('UNKNOWN_TargetEgg_V1',target) end)
+                end
                 if targetState=='Claimed' and (tonumber(target.expiresAt) or 0)>now
                     and (tonumber(target.rate) or 0)>=minRate and (tonumber(target.rank) or 0)>=minRank then
                     source[#source+1]={
@@ -1606,7 +1631,7 @@ local function createFinder(D)
                         rank=target.rank or 0,localTier=target.rank or 0,mutations=target.mutations or '',
                         traitsKnown=target.traitsKnown~=false,area=target.area or '',isLocal=true,
                         source='field',placeId=game.PlaceId,jobId=game.JobId,expiresAt=target.expiresAt,
-                        seenAt=0,takenConfirmed=true,full=true,unavailable=true
+                        seenAt=0,takenAt=target.takenAt,takenConfirmed=true,full=true,unavailable=true
                     }
                 end
             end
@@ -1931,7 +1956,7 @@ local function createFinder(D)
             updateCard(card,entry,i)
             card.row.LayoutOrder=i
             cardsByKey[entry.key]=card
-            ageLabels[#ageLabels+1]={label=card.ageLabel,entry=entry}
+            ageLabels[#ageLabels+1]={label=card.ageLabel,entry=entry,join=card.join}
             canvasHeight+=card.row.Size.Y.Offset+4
             if not checkpoint() then return end
         end
