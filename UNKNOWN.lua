@@ -317,10 +317,6 @@ local function createFinder(D)
         elseif saved==0 and settings.rarityMenu=='mythic-up-v1' then minRank=0 end
     end
     local menuHotkey=Enum.KeyCode.F
-    if type(settings.menuHotkey)=='string' then
-        pcall(function() local saved=Enum.KeyCode[settings.menuHotkey];if saved and saved~=Enum.KeyCode.Unknown and not (settings.menuHotkey=='RightShift' and settings.hotkeyDefaultVersion~=2) then menuHotkey=saved end end)
-    end
-    local themeModal,loadUiAsset,syncCloseArt
     local sharingNotice=D.label(D.gui,'EGG FINDER ON â¢ Sharing egg sightings & server ID',UDim2.new(0,12,1,-28),UDim2.new(1,-24,0,22),Color3.fromRGB(245,245,245),12)
     sharingNotice.Visible=false;sharingNotice.TextSize=12;sharingNotice.TextWrapped=true;sharingNotice.TextStrokeTransparency=0.15
     local panel=D.make('Frame',{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-18,0.5,0),Size=UDim2.new(0.94,0,0.86,0),BackgroundColor3=Color3.fromRGB(22,23,27),Visible=false},D.gui)
@@ -410,7 +406,7 @@ local function createFinder(D)
         if type(writefile)~='function' then return end
         pcall(function()
             local function coords(p) return {p.X.Scale,p.X.Offset,p.Y.Scale,p.Y.Offset} end
-            writefile(settingsPath,Http:JSONEncode({myServer=othersOnly,minRank=minRank,rarityMenu='mythic-up-v1',menuHotkey=menuHotkey.Name,hotkeyDefaultVersion=2,sizeFactor=sizeFactor,sizePercent=sizePercent,panel=coords(panel.Position),icon=coords(open.Position)}))
+            writefile(settingsPath,Http:JSONEncode({myServer=othersOnly,minRank=minRank,rarityMenu='mythic-up-v1',sizeFactor=sizeFactor,sizePercent=sizePercent,panel=coords(panel.Position),icon=coords(open.Position)}))
         end)
     end
     D.saveGuiBeforeTeleport=saveSettings
@@ -445,34 +441,6 @@ local function createFinder(D)
         if ok and type(result)=='string' and open.Parent then open.Image=result;fallback.Visible=false end
     end)
 
-    local sizeMinus=D.make('TextButton',{Name='SizeMinus',Text='',Position=UDim2.new(1,-182,0,3),Size=UDim2.fromOffset(40,40),BackgroundColor3=Color3.fromRGB(190,45,55),TextColor3=Color3.new(1,1,1)},panel)
-    local sizePlus=D.make('TextButton',{Name='SizePlus',Text='',Position=UDim2.new(1,-94,0,3),Size=UDim2.fromOffset(40,40),BackgroundColor3=Color3.fromRGB(45,150,80),TextColor3=Color3.new(1,1,1)},panel)
-    local sizeLabel=D.label(panel,'100%',UDim2.new(1,-138,0,13),UDim2.fromOffset(40,20),Color3.new(1,1,1),14)
-    sizeLabel.TextXAlignment=Enum.TextXAlignment.Center
-    sizeLabel.TextScaled=true;sizeLabel.TextWrapped=false
-    D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},sizeLabel)
-    for _,button in ipairs({sizeMinus,sizePlus}) do
-        local corner=button:FindFirstChildOfClass('UICorner')
-        if corner then corner.CornerRadius=UDim.new(0,6) end
-        local line=D.make('Frame',{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(16,4),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},button)
-        D.make('UICorner',{CornerRadius=UDim.new(1,0)},line)
-    end
-    local upright=D.make('Frame',{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(4,16),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},sizePlus)
-    D.make('UICorner',{CornerRadius=UDim.new(1,0)},upright)
-    local function paintSize()
-        sizeLabel.Text=tostring(sizePercent)..'%'
-        sizeMinus.Active=sizePercent>70;sizeMinus.Selectable=sizePercent>70
-        sizePlus.Active=sizePercent<150;sizePlus.Selectable=sizePercent<150
-    end
-    local function changeSizeBy(delta)
-        local nextPercent=math.clamp(sizePercent+delta,70,150)
-        if nextPercent==sizePercent then return end
-        sizePercent=nextPercent;sizeFactor=sizePercent/100
-        paintSize();fitFinder();saveSettings()
-    end
-    sizeMinus.Activated:Connect(function() changeSizeBy(-10) end)
-    sizePlus.Activated:Connect(function() changeSizeBy(10) end)
-    paintSize()
     local close=D.make('TextButton',{Text='Ã',Position=UDim2.new(1,-33,0,4),Size=UDim2.fromOffset(27,27),BackgroundColor3=Color3.fromRGB(160,35,50),TextColor3=Color3.new(1,1,1),TextSize=22},panel)
     local closeArt=D.make('ImageLabel',{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Image='',ScaleType=Enum.ScaleType.Fit,Active=false},close)
     task.spawn(function()
@@ -1118,7 +1086,7 @@ local function createFinder(D)
         refreshFont()
     end
     -- Bottom options use crisp native rounded text instead of bitmap captions.
-    for _,button in ipairs({scope,myScope,rarity,refreshButton,sizeMinus,sizePlus}) do styleRaisedButton(button) end
+    for _,button in ipairs({scope,myScope,rarity,refreshButton}) do styleRaisedButton(button) end
     for _,button in ipairs({scope,myScope,rarity}) do
         button.Font=Enum.Font.FredokaOne
         local caption=button:FindFirstChild('RaisedCaption')
@@ -1131,59 +1099,7 @@ local function createFinder(D)
         end
     end
     do
-    -- Settings and artwork are independent of the report worker/network lock.
-    local uiAssetUris={}
-    local uiAssetTargets={}
-    local uiAssetsLoading=false
-    loadUiAsset=function(target,key)
-        if uiAssetUris[key] then target.Image=uiAssetUris[key];return end
-        uiAssetTargets[#uiAssetTargets+1]={object=target,key=key}
-        if uiAssetsLoading then return end
-        uiAssetsLoading=true
-        task.spawn(function()
-            local asset=getcustomasset or getsynasset
-            if type(asset)~='function' or type(writefile)~='function' or type(D.decodeAsset)~='function' then return end
-            local missing={}
-            for _,name in ipairs({'gear','discord'}) do
-                local filename='tenshi_beta_settings_v1_'..name..'.png'
-                local exists=false
-                if type(isfile)=='function' then pcall(function() exists=isfile(filename) end) end
-                if exists then
-                    local ok,uri=pcall(asset,filename)
-                    if ok then uiAssetUris[name]=uri end
-                end
-                if not uiAssetUris[name] then missing[#missing+1]=name end
-            end
-            if #missing>0 then
-                local ok,data=pcall(function() return Http:JSONDecode(game:HttpGet('https://raw.githubusercontent.com/syss1211/Tenshi-script/ebde34bfef44bce389f0a6a276455f8019f34051/assets/nyx-settings-art-v1.json')) end)
-                if ok and type(data)=='table' then
-                    for _,name in ipairs(missing) do
-                        local encoded=data[name]
-                        if type(encoded)=='string' then
-                            pcall(function()
-                                local bytes=D.decodeAsset(encoded)
-                                if bytes:sub(1,8)~=string.char(137)..'PNG'..string.char(13,10,26,10) then return end
-                                local filename='tenshi_beta_settings_v1_'..name..'.png'
-                                writefile(filename,bytes);uiAssetUris[name]=asset(filename)
-                            end)
-                        end
-                    end
-                else warn('Tenshi UI artwork: unable to load settings icons') end
-            end
-            for _,item in ipairs(uiAssetTargets) do
-                if item.object.Parent and uiAssetUris[item.key] then item.object.Image=uiAssetUris[item.key] end
-            end
-            uiAssetTargets={};uiAssetsLoading=false
-        end)
-    end
-    themeModal=function(box)
-        box.BackgroundColor3=Color3.fromRGB(43,45,50);box.BackgroundTransparency=0.03
-        D.make('UIGradient',{Color=ColorSequence.new(Color3.new(1,1,1),Color3.fromRGB(165,168,178)),Rotation=90},box)
-        D.make('UIStroke',{Color=Color3.fromRGB(100,104,116),Thickness=2,ApplyStrokeMode=Enum.ApplyStrokeMode.Border},box)
-        if mutationSprites.studs_v05 then
-            D.make('ImageLabel',{Name='ModalStuds',Image=mutationSprites.studs_v05.image,Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ScaleType=Enum.ScaleType.Tile,TileSize=UDim2.fromOffset(256,256),ImageColor3=Color3.fromRGB(145,148,158),ImageTransparency=0.7,Active=false,ZIndex=box.ZIndex},box)
-        end
-    end
+    -- Header title and subtitle styling.
     heading.Text='UNKNOWN'
     heading.AnchorPoint=Vector2.new(0.5,0)
     heading.Position=UDim2.new(0.5,-10,0,2);heading.Size=UDim2.new(1,-112,0,24)
@@ -1192,61 +1108,6 @@ local function createFinder(D)
     discordSubtitle.AnchorPoint=Vector2.new(0.5,0)
     discordSubtitle.Position=UDim2.new(0.5,0,0,27);discordSubtitle.Size=UDim2.new(1,-112,0,14)
     discordSubtitle.TextXAlignment=Enum.TextXAlignment.Center
-    local settingsButton=D.make('TextButton',{Name='OpenSettings',Text='â',TextSize=30,Font=Enum.Font.GothamBold,Position=UDim2.fromOffset(6,3),Size=UDim2.fromOffset(40,40),BackgroundTransparency=1,TextColor3=Color3.new(1,1,1),ZIndex=6},panel)
-    local gear=D.make('ImageLabel',{Name='SettingsGear',Image='',Position=UDim2.fromOffset(-1,-1),Size=UDim2.fromOffset(42,42),BackgroundTransparency=1,ScaleType=Enum.ScaleType.Fit,Active=false,ZIndex=7},settingsButton)
-    gear:GetPropertyChangedSignal('IsLoaded'):Connect(function() if gear.IsLoaded and gear.Image~='' then settingsButton.TextTransparency=1 end end)
-    loadUiAsset(gear,'gear')
-    local settingsOverlay=D.make('TextButton',{Name='SettingsOverlay',Text='',Visible=false,Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.32,AutoButtonColor=false,Active=true,ZIndex=50},panel)
-    local settingsBox=D.make('Frame',{Name='SettingsBox',AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.new(1,-28,0,270),BackgroundColor3=Color3.fromRGB(43,45,50),Active=true,ZIndex=51},settingsOverlay)
-    D.make('UICorner',{CornerRadius=UDim.new(0,4)},settingsBox)
-    themeModal(settingsBox)
-    local function settingsLabel(text,y)
-        local label=D.label(settingsBox,text,UDim2.fromOffset(14,y),UDim2.new(1,-28,0,28),Color3.new(1,1,1),20)
-        label.Font=Enum.Font.FredokaOne;label.TextXAlignment=Enum.TextXAlignment.Center;label.TextScaled=true;label.ZIndex=54
-        D.make('UITextSizeConstraint',{MinTextSize=12,MaxTextSize=20},label)
-        return label
-    end
-    settingsLabel('SETTINGS',10)
-    settingsLabel('CUSTOM GUI',59)
-    settingsLabel('CUSTOM HOTKEY MENU',160)
-    sizeMinus.Parent=settingsBox;sizePlus.Parent=settingsBox;sizeLabel.Parent=settingsBox
-    sizeMinus.Position=UDim2.new(0.5,-78,0,94);sizeMinus.Size=UDim2.fromOffset(48,48)
-    sizePlus.Position=UDim2.new(0.5,30,0,94);sizePlus.Size=UDim2.fromOffset(48,48)
-    sizeLabel.Position=UDim2.new(0.5,-28,0,107);sizeLabel.Size=UDim2.fromOffset(56,22)
-    for _,obj in ipairs({sizeMinus,sizePlus,sizeLabel}) do
-        obj.ZIndex=55
-        for _,child in ipairs(obj:GetDescendants()) do if child:IsA('GuiObject') then child.ZIndex=56 end end
-    end
-    local hotkeyButton=D.make('TextButton',{Name='HotkeyBind',Text=menuHotkey.Name,Font=Enum.Font.FredokaOne,Position=UDim2.new(0,14,0,199),Size=UDim2.new(1,-28,0,42),BackgroundColor3=Color3.fromRGB(67,71,82),TextColor3=Color3.new(1,1,1),TextSize=18,ZIndex=55},settingsBox)
-    hotkeyButton.Font=Enum.Font.FredokaOne
-    local waitingForHotkey=false
-    local function stopSettings()
-        waitingForHotkey=false;settingsOverlay.Visible=false;hotkeyButton.Text=menuHotkey.Name
-    end
-    local settingsClose=D.make('TextButton',{Name='CloseSettings',Text='Ã',Position=UDim2.new(1,-46,0,4),Size=UDim2.fromOffset(40,40),BackgroundColor3=Color3.fromRGB(170,45,55),TextColor3=Color3.new(1,1,1),TextSize=24,ZIndex=55},settingsBox)
-    settingsClose.Activated:Connect(stopSettings)
-    settingsOverlay.Activated:Connect(stopSettings)
-    settingsButton.Activated:Connect(function()
-        if settingsOverlay.Visible then stopSettings() else settingsOverlay.Visible=true end
-    end)
-    hotkeyButton.Activated:Connect(function() waitingForHotkey=true;hotkeyButton.Text='PRESS A KEY  (ESC TO CANCEL)' end)
-    local hotkeyConnection=Input.InputBegan:Connect(function(input,processed)
-        if input.UserInputType~=Enum.UserInputType.Keyboard or input.KeyCode==Enum.KeyCode.Unknown then return end
-        if waitingForHotkey then
-            waitingForHotkey=false
-            if input.KeyCode~=Enum.KeyCode.Escape then menuHotkey=input.KeyCode;saveSettings() end
-            hotkeyButton.Text=menuHotkey.Name
-            return
-        end
-        if processed or Input:GetFocusedTextBox() then return end
-        if input.KeyCode==menuHotkey then
-            panel.Visible=not panel.Visible;D.localPanel.Visible=not panel.Visible
-            if not panel.Visible then stopSettings() end
-        end
-    end)
-    D.gui.Destroying:Connect(function() hotkeyConnection:Disconnect() end)
-    do
-    -- Header title and egg are laid out as one centered visual group.
     do
         local service=game:GetService('TextService')
         heading.Font=discordSubtitle.Font
@@ -1267,9 +1128,6 @@ local function createFinder(D)
         local discordLimit=discordSubtitle:FindFirstChildOfClass('UITextSizeConstraint');if discordLimit then discordLimit.MaxTextSize=14 end
         D.make('UIStroke',{Color=Color3.new(0,0,0),Thickness=1.3},discordSubtitle)
     end
-    sizeLabel.Font=Enum.Font.FredokaOne;sizeLabel.TextStrokeTransparency=1;sizeLabel.TextSize=20
-    local sizeLimit=sizeLabel:FindFirstChildOfClass('UITextSizeConstraint');if sizeLimit then sizeLimit.MaxTextSize=20 end
-    D.make('UIStroke',{Color=Color3.new(0,0,0),Thickness=1.6},sizeLabel)
     refreshButton.Font=Enum.Font.FredokaOne
     local refreshCaption=refreshButton:FindFirstChild('RaisedCaption')
     if refreshCaption then
@@ -1281,74 +1139,14 @@ local function createFinder(D)
     resetTimer.Font=Enum.Font.FredokaOne;resetTimer.TextSize=16;resetTimer.TextScaled=true;resetTimer.TextStrokeTransparency=1
     D.make('UITextSizeConstraint',{MinTextSize=10,MaxTextSize=16},resetTimer)
     D.make('UIStroke',{Color=Color3.new(0,0,0),Thickness=1.4},resetTimer)
-    local controlImages={}
-    local controlLayout={plus={x=-2.644934804413241,y=-2.2657973921765304,w=53.289869608826486,h=52.405215646940825},minus={x=-31.89664429530201,y=1.6469798657718115,w=111.79328859060402,h=44.70604026845638}}
-    local function pngControl(button,key,fallback,color)
-        for _,child in ipairs(button:GetChildren()) do child:Destroy() end
-        button.BackgroundTransparency=1;button.AutoButtonColor=false;button.ClipsDescendants=true
-        button.Text='';button.TextTransparency=1;button.TextStrokeTransparency=1
-        local fallbackLabel=D.make('TextLabel',{Name='SizeFallback',Text=fallback,Font=Enum.Font.FredokaOne,TextSize=34,TextColor3=color,TextStrokeTransparency=1,BackgroundTransparency=1,Size=UDim2.fromScale(1,1),Active=false,ZIndex=button.ZIndex+1},button)
-        local fallbackStroke=D.make('UIStroke',{Color=Color3.new(0,0,0),Thickness=1.8},fallbackLabel)
-        local layout=controlLayout[key]
-        local image=D.make('ImageLabel',{Name='SizePNG',Image='',BackgroundTransparency=1,Position=UDim2.fromOffset(layout.x,layout.y),Size=UDim2.fromOffset(layout.w,layout.h),ScaleType=Enum.ScaleType.Stretch,Active=false,ZIndex=button.ZIndex+2},button)
-        local outlines={}
-        for _,offset in ipairs({{-1,0},{1,0},{0,-1},{0,1}}) do
-            outlines[#outlines+1]=D.make('ImageLabel',{Name='SizeIconOutline',Image='',ImageColor3=Color3.new(0,0,0),ImageTransparency=1,BackgroundTransparency=1,Position=UDim2.fromOffset(layout.x+offset[1],layout.y+offset[2]),Size=UDim2.fromOffset(layout.w,layout.h),ScaleType=Enum.ScaleType.Stretch,Active=false,ZIndex=button.ZIndex+1},button)
-        end
-        image:GetPropertyChangedSignal('IsLoaded'):Connect(function()
-            if image.IsLoaded and image.Image~='' then
-                fallbackLabel.Visible=false;fallbackStroke.Enabled=false
-                for _,outline in ipairs(outlines) do outline.Image=image.Image;outline.ImageTransparency=0 end
-            end
-        end)
-        controlImages[key]=image
-    end
-    pngControl(sizePlus,'plus','+',Color3.fromRGB(45,90,245))
-    pngControl(sizeMinus,'minus','â',Color3.fromRGB(235,30,55))
-    task.spawn(function()
-        local asset=getcustomasset or getsynasset
-        if type(asset)~='function' or type(writefile)~='function' or type(D.decodeAsset)~='function' then return end
-        local pending={}
-        for name,image in pairs(controlImages) do
-            local filename='tenshi_beta_size_png_v1_'..name..'.png'
-            local exists=false;if type(isfile)=='function' then pcall(function() exists=isfile(filename) end) end
-            if exists then local ok,uri=pcall(asset,filename);if ok then image.Image=uri end end
-            if image.Image=='' then pending[#pending+1]=name end
-        end
-        if #pending==0 then return end
-        local ok,data=pcall(function() return Http:JSONDecode(game:HttpGet('https://raw.githubusercontent.com/syss1211/Tenshi-script/609430c9c12e125ebdcdd94edbc9101691e7f863/assets/nyx-size-controls-v1.json')) end)
-        if not ok or type(data)~='table' then warn('Tenshi UI: size icons unavailable');return end
-        for _,name in ipairs(pending) do
-            if type(data[name])=='string' then
-                pcall(function()
-                    local bytes=D.decodeAsset(data[name])
-                    if bytes:sub(1,8)~=string.char(137)..'PNG'..string.char(13,10,26,10) then return end
-                    local filename='tenshi_beta_size_png_v1_'..name..'.png'
-                    writefile(filename,bytes)
-                    if controlImages[name].Parent then controlImages[name].Image=asset(filename) end
-                end)
-            end
+    local hotkeyConnection=Input.InputBegan:Connect(function(input,processed)
+        if processed or Input:GetFocusedTextBox() then return end
+        if input.UserInputType==Enum.UserInputType.Keyboard and input.KeyCode==menuHotkey then
+            panel.Visible=not panel.Visible
+            D.localPanel.Visible=not panel.Visible
         end
     end)
-    syncCloseArt=function(button)
-        button.BackgroundTransparency=1;button.Font=Enum.Font.FredokaOne;button.TextSize=30
-        button.TextColor3=Color3.fromRGB(245,45,45);button.TextStrokeColor3=Color3.new(0,0,0)
-        local art=D.make('ImageLabel',{Name='SharedClosePNG',Image='',AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.new(1,-8,1,-8),BackgroundTransparency=1,ScaleType=Enum.ScaleType.Fit,Active=false,ZIndex=button.ZIndex+1},button)
-        local function sync()
-            if not art.Parent then return end
-            local uri=closeArt.Image
-            art.Image=uri
-            local hasImage=type(uri)=='string' and uri~=''
-            -- Clear the native X on URI assignment, before any IsLoaded signal.
-            button.Text=hasImage and '' or 'Ã'
-            button.TextTransparency=hasImage and 1 or 0
-            button.TextStrokeTransparency=hasImage and 1 or 0
-        end
-        closeArt:GetPropertyChangedSignal('Image'):Connect(sync)
-        sync()
-    end
-    syncCloseArt(settingsClose)
-    end
+    D.gui.Destroying:Connect(function() hotkeyConnection:Disconnect() end)
     end
     local mutationPalettes={
         title={Color3.fromRGB(223,221,221),Color3.fromRGB(225,223,223),Color3.fromRGB(226,225,225),Color3.fromRGB(228,227,227),Color3.fromRGB(230,229,229),Color3.fromRGB(231,231,231),Color3.fromRGB(233,233,233),Color3.fromRGB(236,236,236),Color3.fromRGB(239,239,239),Color3.fromRGB(242,242,242),Color3.fromRGB(246,246,246),Color3.fromRGB(249,249,249),Color3.fromRGB(252,252,252),Color3.fromRGB(255,255,255),Color3.fromRGB(255,255,255),Color3.fromRGB(255,255,255),Color3.fromRGB(255,255,255),Color3.fromRGB(255,255,255),Color3.fromRGB(255,255,255),Color3.fromRGB(255,255,255),Color3.fromRGB(252,252,252),Color3.fromRGB(249,249,249),Color3.fromRGB(246,246,246),Color3.fromRGB(242,242,242),Color3.fromRGB(239,239,239),Color3.fromRGB(236,236,236),Color3.fromRGB(233,233,233),Color3.fromRGB(230,230,230),Color3.fromRGB(227,227,227),Color3.fromRGB(224,224,224),Color3.fromRGB(220,220,220),Color3.fromRGB(217,217,217),Color3.fromRGB(214,214,214)},
