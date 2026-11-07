@@ -1174,13 +1174,105 @@ local function createFinder(D)
     gear:GetPropertyChangedSignal('IsLoaded'):Connect(function() if gear.IsLoaded and gear.Image~='' then settingsButton.TextTransparency=1 end end)
     loadUiAsset(gear,'gear')
     local settingsOverlay=D.make('TextButton',{Name='SettingsOverlay',Text='',Visible=false,Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.32,AutoButtonColor=false,Active=true,ZIndex=50},panel)
-    local settingsBox=D.make('Frame',{Name='SettingsBox',AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(54,52),BackgroundColor3=Color3.fromRGB(43,45,50),Active=true,ZIndex=51},settingsOverlay)
+    local settingsBox=D.make('Frame',{Name='SettingsBox',AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(224,112),BackgroundColor3=Color3.fromRGB(43,45,50),Active=true,ZIndex=51},settingsOverlay)
     D.make('UICorner',{CornerRadius=UDim.new(0,4)},settingsBox)
     themeModal(settingsBox)
     local function stopSettings()
         settingsOverlay.Visible=false
     end
-    local settingsClose=D.make('TextButton',{Name='CloseSettings',Text='Ã—',Position=UDim2.fromOffset(7,6),Size=UDim2.fromOffset(40,40),BackgroundColor3=Color3.fromRGB(170,45,55),TextColor3=Color3.new(1,1,1),TextSize=24,ZIndex=55},settingsBox)
+
+    -- NIGHT SKY: reproduce Tenshi Finder Beta 0.6's local Lighting behavior.
+    local nightSky={enabled=false,writing=false,skies={},clock=nil,created=nil}
+    local lighting=game:GetService('Lighting')
+    local function applyNightSky()
+        if not nightSky.enabled or nightSky.writing then return end
+        nightSky.writing=true
+        if lighting.ClockTime~=22 then lighting.ClockTime=22 end
+        for _,sky in ipairs(lighting:GetChildren()) do
+            if sky:IsA('Sky') then
+                if not nightSky.skies[sky] then
+                    nightSky.skies[sky]={stars=sky.StarCount,bodies=sky.CelestialBodiesShown}
+                end
+                sky.StarCount=3000
+                sky.CelestialBodiesShown=true
+            end
+        end
+        nightSky.writing=false
+    end
+    local function setNightSky(enabled,persist)
+        enabled=enabled==true
+        if enabled and not nightSky.enabled then
+            local current=lighting.ClockTime
+            nightSky.clock=(current==22) and 14 or current
+            nightSky.enabled=true
+            if not lighting:FindFirstChildOfClass('Sky') then
+                nightSky.created=Instance.new('Sky')
+                nightSky.created.Name='UNKNOWN_NightSky'
+                nightSky.created.Parent=lighting
+            end
+            applyNightSky()
+        elseif not enabled and nightSky.enabled then
+            nightSky.enabled=false
+            nightSky.writing=true
+            lighting.ClockTime=tonumber(nightSky.clock) or 14
+            for sky,saved in pairs(nightSky.skies) do
+                pcall(function()
+                    if sky.Parent then
+                        sky.StarCount=saved.stars
+                        sky.CelestialBodiesShown=saved.bodies
+                    end
+                end)
+            end
+            nightSky.skies={}
+            if nightSky.created then
+                nightSky.created:Destroy()
+                nightSky.created=nil
+            end
+            nightSky.writing=false
+        end
+        if persist~=false then
+            if type(writefile)=='function' then
+                pcall(function()
+                    writefile('unknown_night_sky_'..tostring(player.UserId)..'.json',Http:JSONEncode(enabled))
+                end)
+            end
+            pcall(function()
+                Teleports:SetTeleportSetting('UNKNOWN_NightSky_'..tostring(player.UserId),enabled)
+            end)
+        end
+        nightSkyButton.Text='NIGHT SKY  '..(nightSky.enabled and 'ON' or 'OFF')
+        nightSkyButton.BackgroundColor3=nightSky.enabled and Color3.fromRGB(40,135,70) or Color3.fromRGB(65,70,80)
+    end
+    local nightSkyButton=D.make('TextButton',{Name='NightSkyToggle',Text='NIGHT SKY  OFF',Position=UDim2.fromOffset(12,58),Size=UDim2.fromOffset(200,40),BackgroundColor3=Color3.fromRGB(65,70,80),TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=15,ZIndex=55},settingsBox)
+    D.make('UICorner',{CornerRadius=UDim.new(0,5)},nightSkyButton)
+    nightSkyButton.Activated:Connect(function() setNightSky(not nightSky.enabled) end)
+    local nightSkyChanged=lighting:GetPropertyChangedSignal('ClockTime'):Connect(function()
+        if nightSky.enabled and not nightSky.writing and lighting.ClockTime~=22 then
+            nightSky.clock=lighting.ClockTime
+            applyNightSky()
+        end
+    end)
+    local nightSkyAdded=lighting.ChildAdded:Connect(function(child)
+        if child:IsA('Sky') and nightSky.enabled then applyNightSky() end
+    end)
+    D.gui.Destroying:Connect(function()
+        nightSkyChanged:Disconnect()
+        nightSkyAdded:Disconnect()
+        setNightSky(false,false)
+    end)
+    local savedNightSky=false
+    pcall(function()
+        if type(readfile)=='function' then
+            savedNightSky=Http:JSONDecode(readfile('unknown_night_sky_'..tostring(player.UserId)..'.json'))==true
+        end
+    end)
+    pcall(function()
+        local value=Teleports:GetTeleportSetting('UNKNOWN_NightSky_'..tostring(player.UserId))
+        if type(value)=='boolean' then savedNightSky=value end
+    end)
+    if savedNightSky then setNightSky(true,false) end
+
+    local settingsClose=D.make('TextButton',{Name='CloseSettings',Text='Ã—',Position=UDim2.new(1,-46,0,5),Size=UDim2.fromOffset(40,40),BackgroundColor3=Color3.fromRGB(170,45,55),TextColor3=Color3.new(1,1,1),TextSize=24,ZIndex=56},settingsBox)
     settingsClose.Activated:Connect(stopSettings)
     settingsOverlay.Activated:Connect(stopSettings)
     settingsButton.Activated:Connect(function()
