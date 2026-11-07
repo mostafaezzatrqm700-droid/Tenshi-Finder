@@ -640,6 +640,31 @@ local function createFinder(D)
     local autoJoinCandidates={}
     local autoJoinCandidateIndex=1
     local autoJoinRetryRequested=false
+    local autoJoinMinValue=100000000
+    local autoJoinMinText='100M'
+    local function parseAutoJoinMinValue(text)
+        if type(text)~='string' then return nil end
+        local compact=text:upper():gsub('%s+','')
+        local amount,suffix=compact:match('^(%d+%.?%d*)([MB])$')
+        amount=tonumber(amount)
+        if not amount or not suffix then return nil end
+        local value=amount*(suffix=='M' and 1e6 or 1e9)
+        if value<100e6 or value>50e9 then return nil end
+        return value
+    end
+    local autoJoinMinBox=D.make('TextBox',{Name='MinAutoJoinValue',Text=autoJoinMinText,PlaceholderText='MIN AUTO JOIN VALUE (100M - 50B)',Position=UDim2.new(0,10,1,-96),Size=UDim2.new(1,-20,0,36),BackgroundColor3=Color3.fromRGB(45,48,56),TextColor3=Color3.new(1,1,1),PlaceholderColor3=Color3.fromRGB(185,190,200),TextSize=13,Font=Enum.Font.GothamBold,ClearTextOnFocus=false},panel)
+    D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinMinBox)
+    autoJoinMinBox.FocusLost:Connect(function()
+        local value=parseAutoJoinMinValue(autoJoinMinBox.Text)
+        if value then
+            autoJoinMinValue=value
+            autoJoinMinText=autoJoinMinBox.Text:upper():gsub('%s+','')
+            autoJoinMinBox.Text=autoJoinMinText
+            autoJoinCandidates={};autoJoinCandidateIndex=1;feedAt=0
+        else
+            autoJoinMinBox.Text=autoJoinMinText
+        end
+    end)
     local autoJoinButton=D.make('TextButton',{Name='BeastAutoJoin',Text='BEAST AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(35,105,75),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
     autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
@@ -816,6 +841,7 @@ local function createFinder(D)
                                 and expiry and expiry>now and rate and rate>0
                                 and entry.uid~=nil and entry.full~=true and entry.unavailable~=true
                                 and entry.takenConfirmed~=true
+                                and rate>=autoJoinMinValue
                                 and D.publicEntryAllowed(entry,now)
                             if validEntry then candidates[#candidates+1]=entry end
                         end
