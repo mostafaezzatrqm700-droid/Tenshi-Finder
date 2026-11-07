@@ -652,8 +652,8 @@ local function createFinder(D)
         if value<1e9 or value>50e9 then return nil end
         return value
     end
-    local autoJoinMinBox=D.make('TextBox',{Name='MinAutoJoinValue',Text=autoJoinMinText,PlaceholderText='MIN AUTO JOIN VALUE (1B - 50B)',Position=UDim2.new(0,10,1,-96),Size=UDim2.new(1,-20,0,36),BackgroundColor3=Color3.new(0,0,0),TextColor3=Color3.new(1,1,1),PlaceholderColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold,ClearTextOnFocus=false},panel)
-    autoJoinMinBox.BackgroundColor3=Color3.new(0,0,0)
+    local autoJoinMinBox=D.make('TextBox',{Name='MinAutoJoinValue',Text=autoJoinMinText,PlaceholderText='MIN AUTO JOIN VALUE (1B - 50B)',Position=UDim2.new(0,10,1,-96),Size=UDim2.new(1,-20,0,36),BackgroundColor3=Color3.fromRGB(67,70,80),TextColor3=Color3.new(1,1,1),PlaceholderColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold,ClearTextOnFocus=false},panel)
+    autoJoinMinBox.BackgroundColor3=Color3.fromRGB(67,70,80)
     autoJoinMinBox.TextColor3=Color3.new(1,1,1)
     autoJoinMinBox.PlaceholderColor3=Color3.new(1,1,1)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinMinBox)
