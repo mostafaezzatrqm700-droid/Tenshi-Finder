@@ -632,9 +632,9 @@ local function createFinder(D)
             queryStatus='Enter a value from 1B to 50B (example: 1.5B)'
         end
     end)
-    -- Beast Auto Join starts ON every time UNKNOWN is launched.
-    -- The in-session button remains the only way to turn it OFF.
-    local autoJoinEnabled=true
+    -- Beast Auto Join starts OFF every time UNKNOWN is launched, including after a server teleport.
+    -- The in-session button can be used to turn it ON manually.
+    local autoJoinEnabled=false
     local autoJoinBusy=false
     local autoJoinCandidates={}
     local autoJoinCandidateIndex=1
