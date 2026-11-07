@@ -377,7 +377,7 @@ local function createFinder(D)
         if type(writefile)=='function' then pcall(writefile,'tenshi_public_gui_size_v2.json',data) end
         pcall(function() Teleports:SetTeleportSetting('TenshiPublicGuiSizeV2',data) end)
     end
-    local sizePercent=D.publicGuiPercent(settings.sizePercent,settings.sizeFactor)
+    local sizePercent=80
     local sizeFactor=sizePercent/100
     local launcherScale=D.make('UIScale',{Scale=0.8},open)
     local function fitFinder()
