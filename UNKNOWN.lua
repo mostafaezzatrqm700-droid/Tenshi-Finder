@@ -654,16 +654,18 @@ local function createFinder(D)
     end
     local autoJoinMinBox=D.make('TextBox',{Name='MinAutoJoinValue',Text=autoJoinMinText,PlaceholderText='MIN AUTO JOIN VALUE (100M - 50B)',Position=UDim2.new(0,10,1,-96),Size=UDim2.new(1,-20,0,36),BackgroundColor3=Color3.fromRGB(45,48,56),TextColor3=Color3.new(1,1,1),PlaceholderColor3=Color3.fromRGB(185,190,200),TextSize=13,Font=Enum.Font.GothamBold,ClearTextOnFocus=false},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinMinBox)
+    autoJoinMinBox.Text='MIN AUTO JOIN VALUE: '..autoJoinMinText
+    autoJoinMinBox.Focused:Connect(function()
+        autoJoinMinBox.Text=autoJoinMinText
+    end)
     autoJoinMinBox.FocusLost:Connect(function()
         local value=parseAutoJoinMinValue(autoJoinMinBox.Text)
         if value then
             autoJoinMinValue=value
             autoJoinMinText=autoJoinMinBox.Text:upper():gsub('%s+','')
-            autoJoinMinBox.Text=autoJoinMinText
             autoJoinCandidates={};autoJoinCandidateIndex=1;feedAt=0
-        else
-            autoJoinMinBox.Text=autoJoinMinText
         end
+        autoJoinMinBox.Text='MIN AUTO JOIN VALUE: '..autoJoinMinText
     end)
     local autoJoinButton=D.make('TextButton',{Name='BeastAutoJoin',Text='BEAST AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(35,105,75),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
