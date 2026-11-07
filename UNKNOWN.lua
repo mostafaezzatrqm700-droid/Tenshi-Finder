@@ -446,34 +446,6 @@ local function createFinder(D)
         if ok and type(result)=='string' and open.Parent then open.Image=result;fallback.Visible=false end
     end)
 
-    local sizeMinus=D.make('TextButton',{Name='SizeMinus',Text='',Position=UDim2.new(1,-182,0,3),Size=UDim2.fromOffset(40,40),BackgroundColor3=Color3.fromRGB(190,45,55),TextColor3=Color3.new(1,1,1)},panel)
-    local sizePlus=D.make('TextButton',{Name='SizePlus',Text='',Position=UDim2.new(1,-94,0,3),Size=UDim2.fromOffset(40,40),BackgroundColor3=Color3.fromRGB(45,150,80),TextColor3=Color3.new(1,1,1)},panel)
-    local sizeLabel=D.label(panel,'100%',UDim2.new(1,-138,0,13),UDim2.fromOffset(40,20),Color3.new(1,1,1),14)
-    sizeLabel.TextXAlignment=Enum.TextXAlignment.Center
-    sizeLabel.TextScaled=true;sizeLabel.TextWrapped=false
-    D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},sizeLabel)
-    for _,button in ipairs({sizeMinus,sizePlus}) do
-        local corner=button:FindFirstChildOfClass('UICorner')
-        if corner then corner.CornerRadius=UDim.new(0,6) end
-        local line=D.make('Frame',{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(16,4),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},button)
-        D.make('UICorner',{CornerRadius=UDim.new(1,0)},line)
-    end
-    local upright=D.make('Frame',{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(4,16),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},sizePlus)
-    D.make('UICorner',{CornerRadius=UDim.new(1,0)},upright)
-    local function paintSize()
-        sizeLabel.Text=tostring(sizePercent)..'%'
-        sizeMinus.Active=sizePercent>70;sizeMinus.Selectable=sizePercent>70
-        sizePlus.Active=sizePercent<150;sizePlus.Selectable=sizePercent<150
-    end
-    local function changeSizeBy(delta)
-        local nextPercent=math.clamp(sizePercent+delta,70,150)
-        if nextPercent==sizePercent then return end
-        sizePercent=nextPercent;sizeFactor=sizePercent/100
-        paintSize();fitFinder();saveSettings()
-    end
-    sizeMinus.Activated:Connect(function() changeSizeBy(-10) end)
-    sizePlus.Activated:Connect(function() changeSizeBy(10) end)
-    paintSize()
     local close=D.make('TextButton',{Text='Ã',Position=UDim2.new(1,-33,0,4),Size=UDim2.fromOffset(27,27),BackgroundColor3=Color3.fromRGB(160,35,50),TextColor3=Color3.new(1,1,1),TextSize=22},panel)
     local closeArt=D.make('ImageLabel',{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Image='',ScaleType=Enum.ScaleType.Fit,Active=false},close)
     task.spawn(function()
@@ -1202,47 +1174,18 @@ local function createFinder(D)
     gear:GetPropertyChangedSignal('IsLoaded'):Connect(function() if gear.IsLoaded and gear.Image~='' then settingsButton.TextTransparency=1 end end)
     loadUiAsset(gear,'gear')
     local settingsOverlay=D.make('TextButton',{Name='SettingsOverlay',Text='',Visible=false,Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.32,AutoButtonColor=false,Active=true,ZIndex=50},panel)
-    local settingsBox=D.make('Frame',{Name='SettingsBox',AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.new(1,-28,0,270),BackgroundColor3=Color3.fromRGB(43,45,50),Active=true,ZIndex=51},settingsOverlay)
+    local settingsBox=D.make('Frame',{Name='SettingsBox',AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(54,52),BackgroundColor3=Color3.fromRGB(43,45,50),Active=true,ZIndex=51},settingsOverlay)
     D.make('UICorner',{CornerRadius=UDim.new(0,4)},settingsBox)
     themeModal(settingsBox)
-    local function settingsLabel(text,y)
-        local label=D.label(settingsBox,text,UDim2.fromOffset(14,y),UDim2.new(1,-28,0,28),Color3.new(1,1,1),20)
-        label.Font=Enum.Font.FredokaOne;label.TextXAlignment=Enum.TextXAlignment.Center;label.TextScaled=true;label.ZIndex=54
-        D.make('UITextSizeConstraint',{MinTextSize=12,MaxTextSize=20},label)
-        return label
-    end
-    settingsLabel('SETTINGS',10)
-    settingsLabel('CUSTOM GUI',59)
-    settingsLabel('CUSTOM HOTKEY MENU',160)
-    sizeMinus.Parent=settingsBox;sizePlus.Parent=settingsBox;sizeLabel.Parent=settingsBox
-    sizeMinus.Position=UDim2.new(0.5,-78,0,94);sizeMinus.Size=UDim2.fromOffset(48,48)
-    sizePlus.Position=UDim2.new(0.5,30,0,94);sizePlus.Size=UDim2.fromOffset(48,48)
-    sizeLabel.Position=UDim2.new(0.5,-28,0,107);sizeLabel.Size=UDim2.fromOffset(56,22)
-    for _,obj in ipairs({sizeMinus,sizePlus,sizeLabel}) do
-        obj.ZIndex=55
-        for _,child in ipairs(obj:GetDescendants()) do if child:IsA('GuiObject') then child.ZIndex=56 end end
-    end
-    local hotkeyButton=D.make('TextButton',{Name='HotkeyBind',Text=menuHotkey.Name,Font=Enum.Font.FredokaOne,Position=UDim2.new(0,14,0,199),Size=UDim2.new(1,-28,0,42),BackgroundColor3=Color3.fromRGB(67,71,82),TextColor3=Color3.new(1,1,1),TextSize=18,ZIndex=55},settingsBox)
-    hotkeyButton.Font=Enum.Font.FredokaOne
-    local waitingForHotkey=false
     local function stopSettings()
-        waitingForHotkey=false;settingsOverlay.Visible=false;hotkeyButton.Text=menuHotkey.Name
+        settingsOverlay.Visible=false
     end
-    local settingsClose=D.make('TextButton',{Name='CloseSettings',Text='Ã',Position=UDim2.new(1,-46,0,4),Size=UDim2.fromOffset(40,40),BackgroundColor3=Color3.fromRGB(170,45,55),TextColor3=Color3.new(1,1,1),TextSize=24,ZIndex=55},settingsBox)
+    local settingsClose=D.make('TextButton',{Name='CloseSettings',Text='Ã—',Position=UDim2.fromOffset(7,6),Size=UDim2.fromOffset(40,40),BackgroundColor3=Color3.fromRGB(170,45,55),TextColor3=Color3.new(1,1,1),TextSize=24,ZIndex=55},settingsBox)
     settingsClose.Activated:Connect(stopSettings)
     settingsOverlay.Activated:Connect(stopSettings)
     settingsButton.Activated:Connect(function()
         if settingsOverlay.Visible then stopSettings() else settingsOverlay.Visible=true end
     end)
-    hotkeyButton.Activated:Connect(function() waitingForHotkey=true;hotkeyButton.Text='PRESS A KEY  (ESC TO CANCEL)' end)
-    local hotkeyConnection=Input.InputBegan:Connect(function(input,processed)
-        if input.UserInputType~=Enum.UserInputType.Keyboard or input.KeyCode==Enum.KeyCode.Unknown then return end
-        if waitingForHotkey then
-            waitingForHotkey=false
-            if input.KeyCode~=Enum.KeyCode.Escape then menuHotkey=input.KeyCode;saveSettings() end
-            hotkeyButton.Text=menuHotkey.Name
-            return
-        end
         if processed or Input:GetFocusedTextBox() then return end
         if input.KeyCode==menuHotkey then
             panel.Visible=not panel.Visible;D.localPanel.Visible=not panel.Visible
