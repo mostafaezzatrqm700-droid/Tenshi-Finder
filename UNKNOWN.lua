@@ -2444,7 +2444,6 @@ local function verifyKey()
         return
     end
 
-    local statusCode = tonumber(response.StatusCode or response.StatusCode or response.Status)
     local body = response.Body or response.body or ""
     local decodedOk, data = pcall(function() return HttpService:JSONDecode(body) end)
     if not decodedOk or type(data) ~= "table" or data.valid ~= true then
