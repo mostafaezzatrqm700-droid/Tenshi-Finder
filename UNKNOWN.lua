@@ -571,7 +571,18 @@ local function createFinder(D)
     end
     local aliveMessage=D.label(list,loadingText(os.clock()),UDim2.new(),UDim2.new(1,-10,0,40),nil,12)
     local function network(url,method,body,headers,raw)
-        if type(requestFn)~='function' then return nil,'Executor HTTP POST unavailable' end
+        method=method or 'GET'
+        if type(requestFn)~='function' then
+            if method=='GET' then
+                local ok,response=pcall(function() return game:HttpGet(url) end)
+                if not ok or type(response)~='string' then return nil,'GET fallback failed: '..tostring(response) end
+                if raw then return response end
+                local decodedOk,decoded=pcall(Http.JSONDecode,Http,response)
+                if not decodedOk then return nil,'Invalid JSON response from GET fallback' end
+                return decoded
+            end
+            return nil,'Executor HTTP request unavailable for '..method
+        end
         if networkBusy then return nil,'Network request still pending' end
         networkBusy=true
         networkTicket+=1
