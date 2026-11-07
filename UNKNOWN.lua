@@ -1199,6 +1199,7 @@ local function createFinder(D)
         end
         nightSky.writing=false
     end
+    local nightSkyButton
     local function setNightSky(enabled,persist)
         enabled=enabled==true
         if enabled and not nightSky.enabled then
@@ -1243,7 +1244,7 @@ local function createFinder(D)
         nightSkyButton.Text='NIGHT SKY  '..(nightSky.enabled and 'ON' or 'OFF')
         nightSkyButton.BackgroundColor3=nightSky.enabled and Color3.fromRGB(40,135,70) or Color3.fromRGB(65,70,80)
     end
-    local nightSkyButton=D.make('TextButton',{Name='NightSkyToggle',Text='NIGHT SKY  OFF',Position=UDim2.fromOffset(12,58),Size=UDim2.fromOffset(200,40),BackgroundColor3=Color3.fromRGB(65,70,80),TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=15,ZIndex=55},settingsBox)
+    nightSkyButton=D.make('TextButton',{Name='NightSkyToggle',Text='NIGHT SKY  OFF',Position=UDim2.fromOffset(12,58),Size=UDim2.fromOffset(200,40),BackgroundColor3=Color3.fromRGB(65,70,80),TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=15,ZIndex=55},settingsBox)
     D.make('UICorner',{CornerRadius=UDim.new(0,5)},nightSkyButton)
     nightSkyButton.Activated:Connect(function() setNightSky(not nightSky.enabled) end)
     local nightSkyChanged=lighting:GetPropertyChangedSignal('ClockTime'):Connect(function()
