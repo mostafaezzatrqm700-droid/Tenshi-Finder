@@ -1926,8 +1926,11 @@ local function createFinder(D)
                     queryStatus=claim and (claim.error or 'Server reserved; choose another') or ('Join reservation failed: '..tostring(claimError))
                     return
                 end
-                local shared,shareError=report()
-                if not shared then joining=false;joiningKey=nil;queryStatus='Save current server failed: '..tostring(shareError);return end
+                -- Best-effort background report; never block a successful JOIN on reporting.
+                task.spawn(function()
+                    local shared,shareError=report()
+                    if not shared then warn('Pre-teleport report: '..tostring(shareError)) end
+                end)
                 local joinExpiry=math.min(entry.expiresAt,tonumber(claim.expiresAt) or entry.expiresAt)
                 if (os.clock()+clockOffset)*1000>=joinExpiry then
                     joining=false;joiningKey=nil;feedAt=-math.huge;entry.expiresAt=joinExpiry;render()
