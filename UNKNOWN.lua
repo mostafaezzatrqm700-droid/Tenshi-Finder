@@ -572,15 +572,15 @@ local function createFinder(D)
     myScope.Activated:Connect(function() setScope(true) end)
     styleScope()
     local rarityOptions={{name='Mythic',rank=6},{name='Cosmic',rank=7},{name='Secret',rank=8},{name='Eternal',rank=9},{name='Divine',rank=10},{name='Any',rank=0}}
-    local rarityIndex=1
-    for i,option in ipairs(rarityOptions) do if option.rank==minRank then rarityIndex=i;break end end
-    minRank=rarityOptions[rarityIndex].rank
+    local rarityIndex=#rarityOptions
+    minRank=0
     local function rarityButtonText()
         local name=rarityOptions[rarityIndex].name
         local colors={Mythic='#FF4B55',Cosmic='#BE55FF',Secret='#FFFFFF',Eternal='#DACAEC',Divine='#FFCD37',Any='#FFFFFF'}
         return 'MIN RARITY: <font color="'..colors[name]..'">'..name..'</font>'
     end
     local rarity=D.make('TextButton',{Text=rarityButtonText(),RichText=true,Position=UDim2.new(0,10,1,-96),Size=UDim2.new(0.60,-15,0,36),BackgroundColor3=Color3.fromRGB(45,90,175),TextColor3=Color3.new(1,1,1),TextSize=12},panel)
+    rarity.Visible=false;rarity.Active=false
     rarity.Activated:Connect(function()
         rarityIndex=rarityIndex%#rarityOptions+1;minRank=rarityOptions[rarityIndex].rank
         rarity.Text=rarityButtonText()
