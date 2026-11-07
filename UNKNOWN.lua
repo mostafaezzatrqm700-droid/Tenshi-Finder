@@ -1095,7 +1095,7 @@ local function createFinder(D)
         refreshFont()
     end
     -- Bottom options use crisp native rounded text instead of bitmap captions.
-    for _,button in ipairs({scope,myScope,rarity,refreshButton,sizeMinus,sizePlus}) do styleRaisedButton(button) end
+    for _,button in ipairs({scope,myScope,rarity,refreshButton}) do styleRaisedButton(button) end
     for _,button in ipairs({scope,myScope,rarity}) do
         button.Font=Enum.Font.FredokaOne
         local caption=button:FindFirstChild('RaisedCaption')
@@ -1186,6 +1186,8 @@ local function createFinder(D)
     settingsButton.Activated:Connect(function()
         if settingsOverlay.Visible then stopSettings() else settingsOverlay.Visible=true end
     end)
+    local hotkeyConnection=Input.InputBegan:Connect(function(input,processed)
+        if input.UserInputType~=Enum.UserInputType.Keyboard or input.KeyCode==Enum.KeyCode.Unknown then return end
         if processed or Input:GetFocusedTextBox() then return end
         if input.KeyCode==menuHotkey then
             panel.Visible=not panel.Visible;D.localPanel.Visible=not panel.Visible
@@ -1251,8 +1253,6 @@ local function createFinder(D)
         end)
         controlImages[key]=image
     end
-    pngControl(sizePlus,'plus','+',Color3.fromRGB(45,90,245))
-    pngControl(sizeMinus,'minus','â',Color3.fromRGB(235,30,55))
     task.spawn(function()
         local asset=getcustomasset or getsynasset
         if type(asset)~='function' or type(writefile)~='function' or type(D.decodeAsset)~='function' then return end
