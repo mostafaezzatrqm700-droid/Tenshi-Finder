@@ -1407,8 +1407,11 @@ local function createFinder(D)
                     displayText=takenElapsedText(item.entry.takenAt,now)
                     displayColor=Color3.fromRGB(255,105,115)
                     if item.join and item.join.Parent then
-                        local joinText='TAKEN — '..displayText
+                        local joinText=displayText..'\nTAKEN'
                         if item.join.Text~=joinText then item.join.Text=joinText end
+                        item.join.TextWrapped=true
+                        local caption=item.join:FindFirstChild('RaisedCaption')
+                        if caption then caption.TextWrapped=true end
                     end
                 end
                 if item.label.Text~=displayText then item.label.Text=displayText end
