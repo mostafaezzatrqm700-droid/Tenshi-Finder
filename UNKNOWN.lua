@@ -699,10 +699,13 @@ local function createFinder(D)
                 if tonumber(response.StatusCode or response.Status)~=200 then return nil end
                 return Http:JSONDecode(response.Body)
             end)
-            if ok and type(data)=='table' and type(data.endpoint)=='string' and data.endpoint:match('^https://[%w%.%-]+
-        end
-    end)
-    local function loadConfig()
+            if ok and type(data)=='table' and type(data.endpoint)=='string' and data.endpoint:match('^https://[%w%.%-]+$') and type(data.roomKey)=='string' then
+                featureConfig=data
+                if publicBroadcastConfig then config=data;feedAt=-math.huge end
+            end
+            task.wait(60)
+            end)
+            local function loadConfig()
         local data,err=network('https://raw.githubusercontent.com/syss1211/Tenshi-script/main/NYX-Finder-Config.json?nyx='..os.time(),'GET')
         if not data then return false,err end
         if type(data.endpoint)~='string' or not data.endpoint:match('^https://[%w%.%-]+$') or type(data.roomKey)~='string' then return false,'Finder configuration unavailable' end
