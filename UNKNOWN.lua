@@ -110,6 +110,11 @@ end
 local function canonical(value)
     return tostring(value or ''):lower():gsub('^halloween%s*',''):gsub('%s*egg$',''):gsub('[^%w]','')
 end
+local function isHalloweenEgg(entry)
+    local source=tostring(entry and (entry.source or (entry.isEvent and 'event')) or ''):lower()
+    local area=tostring(entry and (entry.area or entry.areaKey) or ''):lower()
+    return source=='event' or area:find('halloween',1,true)~=nil or area:match('^hw[%s/]')~=nil
+end
 local function resolveSpec(specs, source, modelName)
     if source and specs[source] then return specs[source] end
     local result
@@ -1495,7 +1500,7 @@ local function createFinder(D)
         local source,seen={},{}
         local stateByKey={}
         for key,e in pairs(localStates) do if e.expiresAt>now then stateByKey[key]=e end end
-        for _,e in ipairs(feed) do if e.expiresAt>now then stateByKey[e.key]=e end end
+        for _,e in ipairs(feed) do if e.expiresAt>now and not isHalloweenEgg(e) then stateByKey[e.key]=e end end
         local metadata=D.metadata and D.metadata()
         local gameNow=workspace:GetServerTimeNow()*1000
         local validLocal=not metadata or not metadata.resetAt or metadata.resetAt-2000>gameNow
@@ -1518,7 +1523,7 @@ local function createFinder(D)
                 end
             end
             local tracked=D.joinedEgg
-            if tracked and tracked.placeId==game.PlaceId and tracked.jobId==game.JobId then
+            if tracked and not isHalloweenEgg(tracked) and tracked.placeId==game.PlaceId and tracked.jobId==game.JobId then
                 local scan=D.metadata and D.metadata()
                 if type(D.ready)=='function' and D.ready() and scan and type(scan.scanAt)=='number' and tracked._lastScanAt~=scan.scanAt then
                     tracked._lastScanAt=scan.scanAt
@@ -1558,14 +1563,14 @@ local function createFinder(D)
         for key,expiry in pairs(retiredLocal) do if expiry<=now then retiredLocal[key]=nil end end
         if not othersOnly then
             for _,e in ipairs(feed) do
-                if (e.jobId~=game.JobId or e.unavailable) and (e.rate or 0)>=minRate and (e.rank or 0)>=minRank and type(e.expiresAt)=='number' and e.expiresAt>now then source[#source+1]=e;seen[e.key]=true end
+                if not isHalloweenEgg(e) and (e.jobId~=game.JobId or e.unavailable) and (e.rate or 0)>=minRate and (e.rank or 0)>=minRank and type(e.expiresAt)=='number' and e.expiresAt>now then source[#source+1]=e;seen[e.key]=true end
             end
         end
         if metadata and metadata.resetAt and metadata.resetAt>gameNow then
             local states={}
             for _,state in ipairs(metadata.states or {}) do states[state.uid]=state.state end
             for key,e in pairs(retainedLocal) do
-                if not states[e.uid] or states[e.uid]=='Claimed' then
+                if not isHalloweenEgg(e) and (not states[e.uid] or states[e.uid]=='Claimed') then
                     e.unavailable=true;e.full=true;e.takenConfirmed=true
                     stateByKey[key]=e
                     if not othersOnly and not seen[key] and e.rate>=minRate and (e.localTier or 0)>=minRank then source[#source+1]=e;seen[key]=true end
@@ -2119,11 +2124,9 @@ local function run()
     local EggState=module('Client.EggState')
     local Assets=module('Data.Assets')
     local States=module('Shared.Types.AreaEggs').States
-    local mutations,eggRecords,halloweenPets,rarities
+    local mutations,eggRecords
     pcall(function() mutations=module('Shared.Modules.Mutations') end)
     pcall(function() eggRecords=module('Shared.Util.EggRecords') end)
-    pcall(function() halloweenPets=module('Data.HalloweenPets') end)
-    pcall(function() rarities=module('Data.Rarity') end)
     assert(type(EggState.ReadFieldEggs)=='function','ReadFieldEggs unavailable')
     assert(type(Assets.Directory)=='table' and States and States.Slot~=nil,'Game schema changed')
     local latestEntries={}
@@ -2141,80 +2144,13 @@ local function run()
     local lastScan=0
     createFinder({gui=gui,localPanel={Visible=false},player=player,make=make,label=label,entries=function() return os.clock()-lastScan<10 and latestEntries or {} end,metadata=function() return latestMetadata end,ready=function() return lastScan>0 and os.clock()-lastScan<10 end,parseValue=parseValue,money=money,stopFarm=function() end})
     local notified={}
-    local exported={}
-    -- Inspect exported tables only. Never call unknown controller functions/remotes.
-    for _,path in ipairs({'Shared.Types.HalloweenDimension','Shared.Util.HalloweenDimension','Controllers.Game.HalloweenDimensionController'}) do
-        local ok,value=pcall(module,path)
-        if ok and type(value)=='table' then
-            exported[#exported+1]=value
-        end
-    end
-    local function exportedRecords(wanted)
-        local found,visited={},{}
-        local budget=2500
-        local function walk(t,depth)
-            if depth==0 or visited[t] or budget<=0 then return end
-            visited[t]=true
-            local uid=rawget(t,'Uid') or rawget(t,'HalloweenEggUid')
-            if type(uid)=='string' and wanted[uid] then found[uid]=t end
-            for key,value in pairs(t) do
-                budget=budget-1; if budget<0 then break end
-                if type(value)=='table' then
-                    if type(key)=='string' and wanted[key] then found[key]=value end
-                    walk(value,depth-1)
-                end
-            end
-        end
-        for _,value in ipairs(exported) do walk(value,5) end
-        return found
-    end
-    local meshIndex={}
-    local indexedAt=-math.huge
-    local templateCount=0
-    local function matchTemplate(model)
-        -- Manual visual identification, not a unique-template proof:
-        -- user's purple/blue egg matches the Graveyard Brute egg reference.
-        local signature=meshSignature(model)
-        if signature=='70705556141109:85596455133555' then
-            local specs=halloweenPets and halloweenPets.Specs or {}
-            local spec=specs['Graveyard Brute']
-            if spec then return spec,'visual' end
-        end
-        if os.clock()-indexedAt>15 then
-            indexedAt=os.clock(); meshIndex={}; templateCount=0
-            local byName={}
-            for _,spec in pairs(halloweenPets and halloweenPets.Specs or {}) do
-                if type(spec)=='table' and type(spec.EggModel)=='string' then
-                    byName[spec.EggModel]=byName[spec.EggModel] or {}
-                    table.insert(byName[spec.EggModel],spec)
-                end
-            end
-            for _,template in ipairs(RS:GetDescendants()) do
-                local specs=byName[template.Name]
-                if specs and template:IsA('Model') then
-                    local signature=meshSignature(template)
-                    if signature then
-                        templateCount=templateCount+1
-                        meshIndex[signature]=meshIndex[signature] or {}
-                        for _,spec in ipairs(specs) do table.insert(meshIndex[signature],spec) end
-                    end
-                end
-            end
-        end
-        local signature=meshSignature(model)
-        return signature and uniqueMatch(meshIndex[signature] or {}) or nil
-    end
     while alive do
         local ok,err=pcall(function()
-            if not halloweenPets or type(halloweenPets.Specs)~='table' then
-                pcall(function() halloweenPets=module('Data.HalloweenPets') end)
-            end
-            if not rarities then pcall(function() rarities=module('Data.Rarity') end) end
             local scanStartedClock=os.clock()
             local snapshot=EggState.ReadFieldEggs()
             assert(type(snapshot)=='table' and type(snapshot.Records)=='table','Field snapshot unavailable')
             local eggs,seen={},{}
-            local fieldCount,eventCount,missingIncome=0,0,0
+            local fieldCount,missingIncome=0,0
             local fieldStates={}
             local scanAt=workspace:GetServerTimeNow()*1000
             local resetAt
@@ -2242,65 +2178,6 @@ local function run()
                     seen[tostring(uid)]=true
                     local traits,traitsKnown=readTraitNames(record)
                     table.insert(eggs,{key='field:'..tostring(uid),uid=uid,traitsKnown=traitsKnown,category=record.AssetCategory,areaKey=record.AreaId,worldPos=typeof(record.BottomCFrame)=='CFrame' and record.BottomCFrame.Position or nil,area=tostring(record.AreaId)..' | Mut: '..(#traits>0 and table.concat(traits,', ') or traitsKnown and 'None' or 'UNKNOWN'),model=model,icon=asset.Icon,name=asset.DisplayName or record.AssetCategory or 'Unknown',rarity=rarity.DisplayName or rarity._id or 'Unknown',tier=tonumber(rarity.Rank) or 0,color=typeof(rarity.Color)=='Color3' and rarity.Color or Color3.new(1,1,1),scale=scale,weight=weight,rate=rate,estimated=estimated})
-                end
-            end
-            local dimension=workspace:FindFirstChild('HalloweenDimension')
-            local folder=dimension and dimension:FindFirstChild('WorldEggs')
-            local wanted={}
-            for _,obj in ipairs(folder and folder:GetDescendants() or {}) do
-                if obj:IsA('Model') then local uid=obj:GetAttribute('HalloweenEggUid'); if type(uid)=='string' then wanted[uid]=true end end
-            end
-            local records=exportedRecords(wanted)
-            for _,model in ipairs(folder and folder:GetDescendants() or {}) do
-                if model:IsA('Model') and model:GetAttribute('HalloweenEggCanPickUp')==true then
-                    local category=model:GetAttribute('PreparedSourceName')
-                    local uid=model:GetAttribute('HalloweenEggUid')
-                    local identity=uid and tostring(uid) or model:GetFullName()
-                    if not seen[identity] then
-                        seen[identity]=true
-                        local spec=resolveSpec(halloweenPets and halloweenPets.Specs or {},category,model.Name)
-                        local matchedMesh=false
-                        local matchKind
-                        if not spec then spec,matchKind=matchTemplate(model); matchedMesh=spec~=nil end
-                        spec=spec or {}
-                        local rarity=type(spec.Rarity)=='table' and spec.Rarity or nil
-                        if not rarity and rarities then
-                            local directory=rarities.Rarities or rarities.Directory or {}
-                            rarity=directory[spec.Rarity]
-                        end
-                        rarity=rarity or {}
-                        if not rarity.Rank then
-                            for _,asset in pairs(Assets.Directory) do
-                                local candidate=asset.Rarity
-                                if type(candidate)=='table' and (candidate._id==spec.Rarity or candidate.DisplayName==spec.Rarity) then rarity=candidate; break end
-                            end
-                        end
-                        local scale=numberField(model:GetAttributes(),{'AssetScale','Scale'})
-                        local weight=numberField(model:GetAttributes(),{'WeightKg'})
-                        local rate=displayedRate(model)
-                        local modelScale
-                        pcall(function() local value=model:GetScale(); if valid(value) and value>0 then modelScale=value end end)
-                        local traits,traitsKnown,traitSource=eventTraits(model,records[tostring(uid)])
-                        local calculated=false
-                        local scaleFromModel=false
-                        if not scale then scale=modelScale; scaleFromModel=scale~=nil end
-                        if not rate and traitsKnown then
-                            rate=computedRate(spec.EarningRate,scale,traits,mutations)
-                            calculated=rate~=nil
-                        end
-                        -- GetScale may include the template's scale. Until confirmed against
-                        -- the game's event renderer, this result remains an estimate.
-                        eventCount=eventCount+1
-                        local traitText=traitsKnown and (#traits>0 and table.concat(traits,', ') or 'None (explicit data)') or 'UNKNOWN'
-                        if matchedMesh then traitText=traitText..(matchKind=='visual' and ' [visual ID]' or ' [mesh ID match]') end
-                        table.insert(eggs,{key='event:'..identity,uid=uid,category=spec.Id or category,areaKey='Halloween / '..tostring(model:GetAttribute('Zone') or ''),worldPos=model:GetPivot().Position,isEvent=true,model=model,icon=spec.Icon,name=spec.DisplayName or category or model.Name,area='HW '..tostring(model:GetAttribute('Zone') or '')..' | Mut: '..traitText,rarity=rarity.DisplayName or tostring(spec.Rarity or 'Unknown'),tier=tonumber(rarity.Rank) or 0,color=typeof(rarity.Color)=='Color3' and rarity.Color or Color3.fromRGB(220,140,255),scale=scale,modelScale=modelScale,scaleFromModel=scaleFromModel,weight=weight,rate=rate,estimated=calculated,traitsKnown=traitsKnown})
-                        eggs[#eggs].unresolved=spec.DisplayName==nil or spec.Rarity==nil
-                        eggs[#eggs].traitSource=traitSource
-                        if not traitsKnown then
-                            local candidate=computedRate(spec.EarningRate,scale,{},mutations)
-                            eggs[#eggs].unmutatedRate=candidate
-                        end
-                    end
                 end
             end
             -- One numeric value drives both display and ordering.
