@@ -1495,6 +1495,10 @@ local function createFinder(D)
     end
     rarity:GetPropertyChangedSignal('Text'):Connect(refreshFilterWord)
     refreshFilterWord()
+    -- Keep the internal rarity filter at Any, but remove its control from the visible UI.
+    rarity.Visible=false
+    rarity.Active=false
+    rarity.Size=UDim2.fromOffset(0,0)
     local rarityGradientBuckets={cosmic={},secret={},eternal={}}
     local function styleRarityLabel(label,key)
         local palette=filterPalettes[key]
