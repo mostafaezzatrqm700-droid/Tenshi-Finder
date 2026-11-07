@@ -652,6 +652,7 @@ local function createFinder(D)
         autoJoinButton.Text=autoJoinEnabled and 'AUTO JOIN: ON' or 'AUTO JOIN: OFF'
         autoJoinButton.BackgroundColor3=autoJoinEnabled and Color3.fromRGB(30,155,85) or Color3.fromRGB(200,45,45)
     end
+    paintAutoJoin()
     autoJoinButton.Activated:Connect(function()
         if not active then return end
         autoJoinEnabled=not autoJoinEnabled
