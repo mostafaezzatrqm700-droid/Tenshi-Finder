@@ -210,22 +210,31 @@ local function readTraitNames(record)
     return names,known
 end
 local function createFinder(D)
-    local cycleModule
-    pcall(function() cycleModule=module('Shared.Util.AreaEggCycle') end)
+    local cycleModule,cycleModuleLoadError
+    do
+        local loaded,result=pcall(function() return module('Shared.Util.AreaEggCycle') end)
+        if loaded and type(result)=='table' then cycleModule=result
+        else cycleModuleLoadError=loaded and 'module returned '..type(result) or tostring(result) end
+    end
+    local cycleInfoError
     local function cycleInfo()
-        if not cycleModule then return nil end
+        if not cycleModule then cycleInfoError='AreaEggCycle load failed: '..tostring(cycleModuleLoadError or 'module unavailable');return nil end
         local ok,info=pcall(function()
             local now=workspace:GetServerTimeNow()
             local running=cycleModule.IsRunning()
             local remaining=cycleModule.SecondsUntilReset(now)
+            local nextReset=cycleModule.NextResetTime(now)
+            if type(remaining)~='number' or type(nextReset)~='number' then error('cycle module returned an invalid reset time') end
             local respawnAt
             if type(cycleModule.PeriodStartTime)=='function' and type(cycleModule.PeriodIndexAt)=='function' then
                 local known,value=pcall(function() return cycleModule.PeriodStartTime(cycleModule.PeriodIndexAt(now))*1000 end)
                 if known and type(value)=='number' then respawnAt=value end
             end
-            return {resetAt=cycleModule.NextResetTime(now)*1000,respawnAt=respawnAt,remaining=remaining,running=running}
+            return {resetAt=nextReset*1000,respawnAt=respawnAt,remaining=remaining,running=running}
         end)
-        return ok and info or nil
+        if not ok then cycleInfoError='AreaEggCycle error: '..tostring(info);return nil end
+        cycleInfoError=nil
+        return info
     end
     -- Display/join quarantine only. This never filters broadcast snapshots.
     D.publicPrioritySeen={}
@@ -2245,8 +2254,9 @@ local function createFinder(D)
                 resetTimer.Text=cycle.running and string.format('RESET %02d:%02d',math.floor(seconds/60),seconds%60) or 'RESET PAUSED'
                 resetTimer.TextColor3=cycle.running and seconds<=60 and Color3.fromRGB(255,85,85) or cycle.running and seconds<=150 and Color3.fromRGB(255,215,65) or Color3.fromRGB(230,245,255)
             else
-                resetTimer.Text='RESET --:--'
-                resetTimer.TextColor3=Color3.fromRGB(230,245,255)
+                resetTimer.Text=cycleInfoError and 'RESET ERROR' or 'RESET --:--'
+                resetTimer.TextColor3=cycleInfoError and Color3.fromRGB(255,85,85) or Color3.fromRGB(230,245,255)
+                if cycleInfoError then queryStatus='Reset diagnostic: '..cycleInfoError end
             end
             sharingNotice.Visible=false
             local ok=pcall(render)
