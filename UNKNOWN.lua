@@ -783,6 +783,7 @@ local function createFinder(D)
         local mergedStates={}
         local offset,maxPages=0,30
         local pageCount=0
+        local pageLimitReached=false
         local lastPageSignature=nil
         local serverTime=nil
         while pageCount<maxPages do
@@ -834,6 +835,7 @@ local function createFinder(D)
         end
 
         if epoch~=queryEpoch then return true end
+        pageLimitReached=pageCount>=maxPages
         clockOffset=(serverTime or os.time()*1000)/1000-os.clock()
         localStates=mergedStates
         feed={}
@@ -844,8 +846,8 @@ local function createFinder(D)
         end
         D.savePublicSightings()
         feedAt=os.clock()
-        if pageCount>=maxPages and nextOffset and nextOffset>offset then
-            queryStatus='Updated '..tostring(#feed)..' reports (page limit reached)'
+        if pageLimitReached then
+            queryStatus='Updated '..tostring(#feed)..' reports (30-page safety limit; more may exist)'
         else
             queryStatus='Updated '..tostring(#feed)..' reports from '..tostring(pageCount)..' pages'
         end
