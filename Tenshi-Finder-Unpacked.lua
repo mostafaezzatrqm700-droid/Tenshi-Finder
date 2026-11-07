@@ -1,4 +1,4 @@
--- Tenshi Finder public v0.4.3 / UI18
+-- UNKNOWN public v0.4.3 / UI18
 -- Based on public commit 7fd7826415b94846abc924aa0ce9308b541c0653.
 -- Public host/config; broadcast contract preserved from public v0.4.3.
 -- NYX Spawn Panel: current-server field eggs, read-only display.
@@ -12,10 +12,10 @@ local player = Players.LocalPlayer
 assert(player, 'Join the game first')
 local parent = player:WaitForChild('PlayerGui', 15)
 assert(parent, 'PlayerGui unavailable')
-local old = parent:FindFirstChild('TENSHI_FINDER_BETA')
+local old = parent:FindFirstChild('UNKNOWN') or parent:FindFirstChild('TENSHI_FINDER_BETA')
 if old then old:Destroy() end
 local gui = Instance.new('ScreenGui')
-gui.Name = 'TENSHI_FINDER_BETA'
+gui.Name = 'UNKNOWN'
 gui:SetAttribute('TenshiUIBuild','PUBLIC-V05-TOP10')
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
