@@ -865,6 +865,7 @@ local function createFinder(D)
                     end
                     joining=true
                     queryStatus='Auto Join: joining server #'..tostring(autoJoinCandidateIndex)
+                    rememberTeleportTarget(target)
                     D.saveGuiBeforeTeleport()
                     D.stopFarm()
                     local teleported,teleportError=pcall(function()
@@ -1398,13 +1399,33 @@ local function createFinder(D)
     local joiningKey=nil
     local joinRetryAt=0
     local cardsByKey={}
+    -- Remember only the exact egg selected for teleport, scoped to its destination server.
+    local teleportTargetEgg=nil
+    pcall(function()
+        local saved=Teleports:GetTeleportSetting('UNKNOWN_TargetEgg_V1')
+        if type(saved)=='table' then teleportTargetEgg=saved end
+    end)
+    local function rememberTeleportTarget(entry)
+        if type(entry)~='table' or entry.uid==nil or entry.jobId==nil or entry.placeId==nil then return end
+        local saved={
+            uid=tostring(entry.uid),placeId=tonumber(entry.placeId),jobId=tostring(entry.jobId),
+            name=tostring(entry.name or 'Unknown'),rate=tonumber(entry.rate) or 0,
+            missingRate=entry.missingRate==true,scale=tonumber(entry.scale),weight=tonumber(entry.weight),
+            icon=type(entry.icon)=='string' and entry.icon or '',rarity=tostring(entry.rarity or 'Unknown'),
+            rank=tonumber(entry.rank or entry.localTier) or 0,mutations=tostring(entry.mutations or entry.mutationText or ''),
+            traitsKnown=entry.traitsKnown~=false,area=tostring(entry.area or ''),
+            expiresAt=tonumber(entry.expiresAt) or ((os.clock()+clockOffset)*1000+300000)
+        }
+        teleportTargetEgg=saved
+        pcall(function() Teleports:SetTeleportSetting('UNKNOWN_TargetEgg_V1',saved) end)
+    end
     local function compactCardHeight()
         return math.clamp(math.floor((panel.Size.Y.Offset-238-16)/5),76,112)
     end
     local function joinPresentation(entry)
         local here=entry.isLocal or entry.jobId==game.JobId
-        if othersOnly and here then return 'HERE',Color3.fromRGB(86,90,100),false end
         if entry.takenConfirmed then return 'TAKEN',Color3.fromRGB(235,55,65),false end
+        if othersOnly and here then return 'HERE',Color3.fromRGB(86,90,100),false end
         if entry.full or entry.unavailable then return 'FULL',Color3.fromRGB(255,75,85),false end
         if here then return 'HERE',Color3.fromRGB(86,90,100),false end
         if joining and joiningKey==entry.key then return 'JOINING...',Color3.fromRGB(40,160,85),false end
@@ -1553,9 +1574,11 @@ local function createFinder(D)
             -- must never suppress a record returned by the current field scan.
             local live=D.entries()
             local localCycle=cycleInfo()
+            local liveTargetPresent=false
             for _,e in ipairs(live) do
                 if (e.rate or 0)>=minRate and (e.tier or 0)>=minRank then
                     local uid=tostring(e.uid or e.key)
+                    if teleportTargetEgg and tostring(teleportTargetEgg.uid)==uid then liveTargetPresent=true end
                     source[#source+1]={key=game.PlaceId..':'..game.JobId..':'..uid,uid=uid,
                         name=e.name,rate=e.rate or 0,missingRate=e.rate==nil,scale=e.scale,weight=e.weight,
                         icon=e.icon,rarity=e.rarity,rank=e.tier,localTier=e.tier,mutations=e.mutationText,
@@ -1563,6 +1586,28 @@ local function createFinder(D)
                         source=e.isEvent and 'event' or 'field',estimated=e.estimated or e.unmutatedRate~=nil,
                         placeId=game.PlaceId,jobId=game.JobId,expiresAt=now+5000,seenAt=0,
                         spawnedAt=not e.isEvent and localCycle and localCycle.respawnAt or nil}
+                end
+            end
+            -- Keep only the egg we teleported to. If its server record is now Claimed,
+            -- show its saved card in MY SERVER with a TAKEN label instead of removing it.
+            local target=teleportTargetEgg
+            if target and tonumber(target.placeId)==game.PlaceId and tostring(target.jobId)==game.JobId
+                and not liveTargetPresent and type(target.uid)=='string' then
+                local targetState=nil
+                for _,state in ipairs((metadata and metadata.states) or {}) do
+                    if tostring(state.uid)==target.uid then targetState=tostring(state.state);break end
+                end
+                if targetState=='Claimed' and (tonumber(target.expiresAt) or 0)>now
+                    and (tonumber(target.rate) or 0)>=minRate and (tonumber(target.rank) or 0)>=minRank then
+                    source[#source+1]={
+                        key='target-taken:'..tostring(game.PlaceId)..':'..game.JobId..':'..target.uid,
+                        uid=target.uid,name=target.name,rate=target.rate or 0,missingRate=target.missingRate==true,
+                        scale=target.scale,weight=target.weight,icon=target.icon,rarity=target.rarity,
+                        rank=target.rank or 0,localTier=target.rank or 0,mutations=target.mutations or '',
+                        traitsKnown=target.traitsKnown~=false,area=target.area or '',isLocal=true,
+                        source='field',placeId=game.PlaceId,jobId=game.JobId,expiresAt=target.expiresAt,
+                        seenAt=0,takenConfirmed=true,full=true,unavailable=true
+                    }
                 end
             end
             if D.gui then pcall(function() D.gui:SetAttribute('TenshiLocalScanCount',#live);D.gui:SetAttribute('TenshiLocalVisibleCount',#source) end) end
@@ -1874,6 +1919,7 @@ local function createFinder(D)
                     joining=false;joiningKey=nil;feedAt=-math.huge;entry.expiresAt=joinExpiry;render()
                     queryStatus='Reset reached; refreshing';return
                 end
+                rememberTeleportTarget(entry)
                 D.saveGuiBeforeTeleport()
                 D.stopFarm()
                 local ok,err=pcall(function() Teleports:TeleportToPlaceInstance(entry.placeId,entry.jobId,D.player) end)
