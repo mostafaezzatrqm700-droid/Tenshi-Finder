@@ -444,23 +444,6 @@ local function createFinder(D)
         if ok and type(result)=='string' and open.Parent then open.Image=result;fallback.Visible=false end
     end)
 
-    local close=D.make('TextButton',{Text='Ã',Position=UDim2.new(1,-33,0,4),Size=UDim2.fromOffset(27,27),BackgroundColor3=Color3.fromRGB(160,35,50),TextColor3=Color3.new(1,1,1),TextSize=22},panel)
-    local closeArt=D.make('ImageLabel',{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Image='',ScaleType=Enum.ScaleType.Fit,Active=false},close)
-    task.spawn(function()
-        local asset=getcustomasset or getsynasset
-        if type(asset)~='function' or type(writefile)~='function' then return end
-        local ok,result=pcall(function()
-            local bytes=game:HttpGet('https://raw.githubusercontent.com/syss1211/Tenshi-script/main/Tenshi-'..'Finder-Beta-Close.png')
-            writefile('tenshi_beta_close_v1.png',bytes)
-            return asset('tenshi_beta_close_v1.png')
-        end)
-        if ok and type(result)=='string' and close.Parent then
-            closeArt.Image=result;close.Text='';close.BackgroundTransparency=1
-        end
-    end)
-    local suppressOpenUntil=0
-    open.Activated:Connect(function() if os.clock()<suppressOpenUntil then return end; panel.Visible=not panel.Visible; D.localPanel.Visible=not panel.Visible end)
-    close.Activated:Connect(function() panel.Visible=false; D.localPanel.Visible=true end)
     local Input=game:GetService('UserInputService')
     local drag
     local function draggable(target,handle,isLauncher)
