@@ -634,14 +634,14 @@ local function createFinder(D)
     -- Roblox public-server directory, independent of the Finder report feed.
     status.Size=UDim2.new(0.53,-14,0,24)
     status.TextSize=11
-    -- Beast Auto Join: selects the highest-income valid egg from the shared Finder feed.
+    -- Auto Join: selects the highest-income valid egg from the shared Finder feed.
     local autoJoinEnabled=false
     local autoJoinBusy=false
     local autoJoinCandidates={}
     local autoJoinCandidateIndex=1
     local autoJoinRetryRequested=false
-    local autoJoinMinValue=100000000
-    local autoJoinMinText='100M'
+    local autoJoinMinValue=1e9
+    local autoJoinMinText='1B'
     local function parseAutoJoinMinValue(text)
         if type(text)~='string' then return nil end
         local compact=text:upper():gsub('%s+','')
@@ -649,10 +649,13 @@ local function createFinder(D)
         amount=tonumber(amount)
         if not amount or not suffix then return nil end
         local value=amount*(suffix=='M' and 1e6 or 1e9)
-        if value<100e6 or value>50e9 then return nil end
+        if value<1e9 or value>50e9 then return nil end
         return value
     end
-    local autoJoinMinBox=D.make('TextBox',{Name='MinAutoJoinValue',Text=autoJoinMinText,PlaceholderText='MIN AUTO JOIN VALUE (100M - 50B)',Position=UDim2.new(0,10,1,-96),Size=UDim2.new(1,-20,0,36),BackgroundColor3=Color3.fromRGB(45,48,56),TextColor3=Color3.new(1,1,1),PlaceholderColor3=Color3.fromRGB(185,190,200),TextSize=13,Font=Enum.Font.GothamBold,ClearTextOnFocus=false},panel)
+    local autoJoinMinBox=D.make('TextBox',{Name='MinAutoJoinValue',Text=autoJoinMinText,PlaceholderText='MIN AUTO JOIN VALUE (1B - 50B)',Position=UDim2.new(0,10,1,-96),Size=UDim2.new(1,-20,0,36),BackgroundColor3=Color3.new(0,0,0),TextColor3=Color3.new(1,1,1),PlaceholderColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold,ClearTextOnFocus=false},panel)
+    autoJoinMinBox.BackgroundColor3=Color3.new(0,0,0)
+    autoJoinMinBox.TextColor3=Color3.new(1,1,1)
+    autoJoinMinBox.PlaceholderColor3=Color3.new(1,1,1)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinMinBox)
     autoJoinMinBox.Text='MIN AUTO JOIN VALUE: '..autoJoinMinText
     autoJoinMinBox.Focused:Connect(function()
@@ -667,13 +670,13 @@ local function createFinder(D)
         end
         autoJoinMinBox.Text='MIN AUTO JOIN VALUE: '..autoJoinMinText
     end)
-    local autoJoinButton=D.make('TextButton',{Name='BeastAutoJoin',Text='BEAST AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(35,105,75),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
+    local autoJoinButton=D.make('TextButton',{Name='AutoJoin',Text='AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(190,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
     autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
     D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},autoJoinButton)
     local function paintAutoJoin()
-        autoJoinButton.Text=autoJoinEnabled and 'BEAST AUTO JOIN: ON' or 'BEAST AUTO JOIN: OFF'
-        autoJoinButton.BackgroundColor3=autoJoinEnabled and Color3.fromRGB(30,155,85) or Color3.fromRGB(35,105,75)
+        autoJoinButton.Text=autoJoinEnabled and 'AUTO JOIN: ON' or 'AUTO JOIN: OFF'
+        autoJoinButton.BackgroundColor3=autoJoinEnabled and Color3.fromRGB(30,155,85) or Color3.fromRGB(190,45,45)
     end
     autoJoinButton.Activated:Connect(function()
         if not active then return end
