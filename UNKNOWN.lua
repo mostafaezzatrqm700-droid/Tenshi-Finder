@@ -302,7 +302,7 @@ local function createFinder(D)
     local localStates={}
     local reportStatus='Connecting'
     local queryStatus=''
-    local minRate,minRank=1e9,6
+    local minRate,minRank=0,6
     local joining=false
     local localHighlight
     local pageOffset,nextOffset=0,nil
