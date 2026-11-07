@@ -276,8 +276,6 @@ local function createFinder(D)
         if ok then D.publicSightingsDirty=false end
     end
 
-    local PREMIUM_EDITION=false
-    local AUTO_KEY=''
     local originalMake,originalLabel=D.make,D.label
     D.make=function(class,props,parent)
         if class=='TextButton' or class=='TextBox' then props.Font=Enum.Font.GothamBold;props.TextSize=math.max(props.TextSize or 15,15) end
@@ -290,7 +288,7 @@ local function createFinder(D)
         local obj=originalLabel(parent,text,pos,size,color or Color3.fromRGB(240,242,255),math.max(fontSize or 15,14))
         obj.Font=Enum.Font.GothamBold;obj.TextStrokeColor3=Color3.new(0,0,0);obj.TextStrokeTransparency=0.45;return obj
     end
-    local DISCORD='https://discord.gg/Z65aABK2TT'
+    local DISCORD='https://discord.com/users/1078459357185970268'
     local Http=game:GetService('HttpService')
     local Teleports=game:GetService('TeleportService')
     local requestFn=request or http_request or (syn and syn.request) or (http and http.request)
@@ -304,13 +302,12 @@ local function createFinder(D)
     local localStates={}
     local reportStatus='Connecting'
     local queryStatus=''
-    local minRate,minRank=1e9,6
+    local minRate,minRank=0,0 -- Show all egg income values; Auto Join has its own separate minimum.
     local joining=false
     local localHighlight
-    local viewerCode=PREMIUM_EDITION and AUTO_KEY or ''
     local pageOffset,nextOffset=0,nil
     local queryEpoch=0
-    local settingsPath=PREMIUM_EDITION and 'tenshi_beta_premium_ui.json' or 'tenshi_beta_ui.json'
+    local settingsPath='tenshi_beta_ui.json'
     local settings={}
     if type(readfile)=='function' then pcall(function() local data=Http:JSONDecode(readfile(settingsPath));if type(data)=='table' then settings=data end end) end
     if type(settings.myServer)=='boolean' then othersOnly=settings.myServer end
@@ -319,6 +316,7 @@ local function createFinder(D)
         if saved>=6 and saved<=10 then minRank=saved
         elseif saved==0 and settings.rarityMenu=='mythic-up-v1' then minRank=0 end
     end
+    minRank=0 -- Always use Any; the rarity selector is hidden.
     local menuHotkey=Enum.KeyCode.F
     if type(settings.menuHotkey)=='string' then
         pcall(function() local saved=Enum.KeyCode[settings.menuHotkey];if saved and saved~=Enum.KeyCode.Unknown and not (settings.menuHotkey=='RightShift' and settings.hotkeyDefaultVersion~=2) then menuHotkey=saved end end)
@@ -344,7 +342,7 @@ local function createFinder(D)
     D.make('UICorner',{CornerRadius=UDim.new(0,4)},bar)
     D.make('UICorner',{CornerRadius=UDim.new(0,4)},bar)
     D.make('UIGradient',{Color=ColorSequence.new(Color3.fromRGB(125,130,137),Color3.fromRGB(70,72,80)),Rotation=0},bar)
-    local heading=D.label(panel,PREMIUM_EDITION and 'UNKNOWN / PREMIUM' or 'UNKNOWN',UDim2.fromOffset(14,8),UDim2.new(1,-55,0,32),nil,22)
+    local heading=D.label(panel,'UNKNOWN',UDim2.fromOffset(14,8),UDim2.new(1,-55,0,32),nil,22)
     local open=D.make('ImageButton',{Image='',Position=UDim2.fromOffset(18,80),Size=UDim2.fromOffset(82,82),BackgroundColor3=Color3.fromRGB(250,250,250),ScaleType=Enum.ScaleType.Fit,ClipsDescendants=true},D.gui)
     D.make('UICorner',{CornerRadius=UDim.new(1,0)},open)
     D.make('UIStroke',{Color=Color3.fromRGB(185,25,40),Thickness=3},open)
@@ -448,34 +446,6 @@ local function createFinder(D)
         if ok and type(result)=='string' and open.Parent then open.Image=result;fallback.Visible=false end
     end)
 
-    local sizeMinus=D.make('TextButton',{Name='SizeMinus',Text='',Position=UDim2.new(1,-182,0,3),Size=UDim2.fromOffset(40,40),BackgroundColor3=Color3.fromRGB(190,45,55),TextColor3=Color3.new(1,1,1)},panel)
-    local sizePlus=D.make('TextButton',{Name='SizePlus',Text='',Position=UDim2.new(1,-94,0,3),Size=UDim2.fromOffset(40,40),BackgroundColor3=Color3.fromRGB(45,150,80),TextColor3=Color3.new(1,1,1)},panel)
-    local sizeLabel=D.label(panel,'100%',UDim2.new(1,-138,0,13),UDim2.fromOffset(40,20),Color3.new(1,1,1),14)
-    sizeLabel.TextXAlignment=Enum.TextXAlignment.Center
-    sizeLabel.TextScaled=true;sizeLabel.TextWrapped=false
-    D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},sizeLabel)
-    for _,button in ipairs({sizeMinus,sizePlus}) do
-        local corner=button:FindFirstChildOfClass('UICorner')
-        if corner then corner.CornerRadius=UDim.new(0,6) end
-        local line=D.make('Frame',{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(16,4),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},button)
-        D.make('UICorner',{CornerRadius=UDim.new(1,0)},line)
-    end
-    local upright=D.make('Frame',{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(4,16),BackgroundColor3=Color3.new(1,1,1),BorderSizePixel=0},sizePlus)
-    D.make('UICorner',{CornerRadius=UDim.new(1,0)},upright)
-    local function paintSize()
-        sizeLabel.Text=tostring(sizePercent)..'%'
-        sizeMinus.Active=sizePercent>70;sizeMinus.Selectable=sizePercent>70
-        sizePlus.Active=sizePercent<150;sizePlus.Selectable=sizePercent<150
-    end
-    local function changeSizeBy(delta)
-        local nextPercent=math.clamp(sizePercent+delta,70,150)
-        if nextPercent==sizePercent then return end
-        sizePercent=nextPercent;sizeFactor=sizePercent/100
-        paintSize();fitFinder();saveSettings()
-    end
-    sizeMinus.Activated:Connect(function() changeSizeBy(-10) end)
-    sizePlus.Activated:Connect(function() changeSizeBy(10) end)
-    paintSize()
     local close=D.make('TextButton',{Text='Ã',Position=UDim2.new(1,-33,0,4),Size=UDim2.fromOffset(27,27),BackgroundColor3=Color3.fromRGB(160,35,50),TextColor3=Color3.new(1,1,1),TextSize=22},panel)
     local closeArt=D.make('ImageLabel',{Size=UDim2.fromScale(1,1),BackgroundTransparency=1,Image='',ScaleType=Enum.ScaleType.Fit,Active=false},close)
     task.spawn(function()
@@ -543,7 +513,7 @@ local function createFinder(D)
     local status=D.label(panel,'Connectingâ¦',UDim2.fromOffset(14,52),UDim2.new(1,-28,0,48),Color3.fromRGB(210,218,240),14)
     status.Visible=false
     status.TextWrapped=true
-    if not PREMIUM_EDITION then status.Size=UDim2.new(1,-28,0,24) end
+    status.Size=UDim2.new(1,-28,0,24)
     local discordSubtitle=D.label(panel,DISCORD,UDim2.fromOffset(10,27),UDim2.fromOffset(205,14),Color3.new(1,1,1),11)
     discordSubtitle.TextSize=11
     discordSubtitle.TextScaled=true;discordSubtitle.TextWrapped=false;discordSubtitle.Visible=true
@@ -564,7 +534,7 @@ local function createFinder(D)
     local function setScope(myServer)
         if othersOnly==myServer then return end
         othersOnly=myServer;styleScope()
-        page.Text=othersOnly and 'LOCAL EGGS' or PREMIUM_EDITION and 'GLOBAL TOP 10' or 'TOP 10'
+        page.Text=othersOnly and 'LOCAL EGGS' or 'TOP 10'
         queryEpoch+=1;pageOffset=0;feedAt=-math.huge;task.defer(saveSettings)
         if requestScopeRender then requestScopeRender() end
     end
@@ -572,7 +542,7 @@ local function createFinder(D)
     myScope.Activated:Connect(function() setScope(true) end)
     styleScope()
     local rarityOptions={{name='Mythic',rank=6},{name='Cosmic',rank=7},{name='Secret',rank=8},{name='Eternal',rank=9},{name='Divine',rank=10},{name='Any',rank=0}}
-    local rarityIndex=1
+    local rarityIndex=#rarityOptions
     for i,option in ipairs(rarityOptions) do if option.rank==minRank then rarityIndex=i;break end end
     minRank=rarityOptions[rarityIndex].rank
     local function rarityButtonText()
@@ -581,69 +551,11 @@ local function createFinder(D)
         return 'MIN RARITY: <font color="'..colors[name]..'">'..name..'</font>'
     end
     local rarity=D.make('TextButton',{Text=rarityButtonText(),RichText=true,Position=UDim2.new(0,10,1,-96),Size=UDim2.new(0.60,-15,0,36),BackgroundColor3=Color3.fromRGB(45,90,175),TextColor3=Color3.new(1,1,1),TextSize=12},panel)
+    rarity.Visible=false;rarity.Active=false
     rarity.Activated:Connect(function()
         rarityIndex=rarityIndex%#rarityOptions+1;minRank=rarityOptions[rarityIndex].rank
         rarity.Text=rarityButtonText()
         queryEpoch+=1;feed={};pageOffset=0;feedAt=-math.huge;saveSettings()
-    end)
-    local access=PREMIUM_EDITION and AUTO_KEY=='' and D.make('TextBox',{Text='',PlaceholderText='PREMIUM code (top 10)',Position=UDim2.new(0,10,1,-44),Size=UDim2.new(1,-20,0,34),ClearTextOnFocus=false,BackgroundColor3=Color3.fromRGB(45,48,60),TextColor3=Color3.new(1,1,1),TextSize=12},panel) or {Text=''} 
-    local unlock=D.make('TextButton',{Text='PREMIUM',Position=UDim2.new(0.60,5,1,-96),Size=UDim2.new(0.40,-15,0,36),BackgroundColor3=Color3.fromRGB(210,170,35),TextColor3=Color3.new(1,1,1),TextSize=12},panel)
-    access.Visible=PREMIUM_EDITION and AUTO_KEY==''
-    if PREMIUM_EDITION and AUTO_KEY~='' then
-        unlock.Visible=false
-        D.label(panel,'PREMIUM',UDim2.new(0.60,5,0,106),UDim2.new(0.40,-15,0,36),Color3.new(1,1,1),15)
-    end
-    local copy=D.make('TextButton',{Text='COPY DISCORD LINK',Position=UDim2.fromOffset(10,176),Size=UDim2.new(1,-110,0,27),BackgroundColor3=Color3.fromRGB(65,75,135),TextColor3=Color3.new(1,1,1),TextSize=12,Visible=not PREMIUM_EDITION},panel)
-    copy.Visible=false -- Discord copying is now inside the Premium dialog.
-    local function copyLink()
-        if type(setclipboard)=='function' then
-            local ok=pcall(setclipboard,DISCORD)
-            if ok then
-                copy.Text='LINK COPIED'
-                task.delay(1.5,function() if active then copy.Text='COPY DISCORD LINK' end end)
-                return true
-            end
-        end
-        copy.Text='discord.gg/Z65aABK2TT'; copy.TextWrapped=true; queryStatus='Discord: '..DISCORD; return false
-    end
-    copy.Activated:Connect(copyLink)
-    local premiumPopup
-    local function showPremiumPopup()
-        if premiumPopup then premiumPopup.Visible=true;return end
-        premiumPopup=D.make('Frame',{Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.3,Active=true,ZIndex=30},panel)
-        local box=D.make('Frame',{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.new(1,-28,0,232),BackgroundColor3=Color3.fromRGB(43,45,50),ZIndex=31},premiumPopup)
-        D.make('UICorner',{CornerRadius=UDim.new(0,4)},box)
-        themeModal(box)
-        local discordMark=D.make('ImageLabel',{Name='PremiumDiscordIcon',Image='',AnchorPoint=Vector2.new(0.5,0),Position=UDim2.new(0.5,0,0,8),Size=UDim2.fromOffset(80,66),BackgroundTransparency=1,ScaleType=Enum.ScaleType.Fit,Active=false,ZIndex=32},box)
-        loadUiAsset(discordMark,'discord')
-        local title=D.label(box,'JOIN DISCORD TO GET PREMIUM',UDim2.fromOffset(12,76),UDim2.new(1,-24,0,52),Color3.new(1,1,1),20)
-        title.Font=Enum.Font.FredokaOne;title.TextScaled=true;title.TextWrapped=true;title.TextXAlignment=Enum.TextXAlignment.Center;title.ZIndex=32
-        D.make('UITextSizeConstraint',{MinTextSize=12,MaxTextSize=21},title)
-        local bar=D.make('Frame',{Position=UDim2.fromOffset(12,148),Size=UDim2.new(1,-24,0,64),BackgroundColor3=Color3.fromRGB(57,60,68),ZIndex=32},box)
-        D.make('UICorner',{CornerRadius=UDim.new(0,5)},bar)
-        local link=D.label(bar,DISCORD,UDim2.fromOffset(8,6),UDim2.new(1,-116,1,-12),Color3.fromRGB(200,210,255),12)
-        link.TextSize=12;link.TextWrapped=true;link.ZIndex=33
-        local popupCopy=D.make('TextButton',{Font=Enum.Font.FredokaOne,Text='COPY LINK',Position=UDim2.new(1,-103,0.5,-18),Size=UDim2.fromOffset(96,36),BackgroundColor3=Color3.fromRGB(85,105,220),TextColor3=Color3.new(1,1,1),TextSize=14,ZIndex=33},bar)
-        popupCopy.Font=Enum.Font.FredokaOne
-        popupCopy.Activated:Connect(function()
-            if type(setclipboard)=='function' and pcall(setclipboard,DISCORD) then
-                popupCopy.Text='COPIED'
-                task.delay(1.5,function() if active then popupCopy.Text='COPY LINK' end end)
-            else popupCopy.Text='COPY UNAVAILABLE' end
-        end)
-        local dismiss=D.make('TextButton',{Text='Ã',Position=UDim2.new(1,-34,0,5),Size=UDim2.fromOffset(28,26),BackgroundColor3=Color3.fromRGB(135,55,90),TextColor3=Color3.new(1,1,1),TextSize=22,ZIndex=32},box)
-        syncCloseArt(dismiss)
-        dismiss.Activated:Connect(function() premiumPopup.Visible=false end)
-    end
-    unlock.Activated:Connect(function()
-        if not PREMIUM_EDITION then
-            showPremiumPopup()
-            return
-        end
-        pageOffset=0
-        if viewerCode~='' then viewerCode=''; feed={}; feedAt=-math.huge; unlock.Text='PREMIUM'; queryStatus='Public Finder'; return end
-        viewerCode=access.Text:match('^%s*(.-)%s*$'); access.Text=''; feed={}; feedAt=-math.huge
-        queryStatus='Checking access code'
     end)
     local refreshButton=D.make('TextButton',{Text='REFRESH',Position=UDim2.fromOffset(10,54),Size=UDim2.new(1,-20,0,30),BackgroundColor3=Color3.fromRGB(115,215,45),BackgroundTransparency=0.15,TextColor3=Color3.new(1,1,1),TextSize=14},panel)
     local resetTimer=D.label(refreshButton,'RESET --:--',UDim2.fromOffset(8,0),UDim2.new(0.28,-8,1,0),Color3.fromRGB(230,245,255),13)
@@ -659,7 +571,18 @@ local function createFinder(D)
     end
     local aliveMessage=D.label(list,loadingText(os.clock()),UDim2.new(),UDim2.new(1,-10,0,40),nil,12)
     local function network(url,method,body,headers,raw)
-        if type(requestFn)~='function' then return nil,'Executor HTTP POST unavailable' end
+        method=method or 'GET'
+        if type(requestFn)~='function' then
+            if method=='GET' then
+                local ok,response=pcall(function() return game:HttpGet(url) end)
+                if not ok or type(response)~='string' then return nil,'GET fallback failed: '..tostring(response) end
+                if raw then return response end
+                local decodedOk,decoded=pcall(Http.JSONDecode,Http,response)
+                if not decodedOk then return nil,'Invalid JSON response from GET fallback' end
+                return decoded
+            end
+            return nil,'Executor HTTP request unavailable for '..method
+        end
         if networkBusy then return nil,'Network request still pending' end
         networkBusy=true
         networkTicket+=1
@@ -694,19 +617,49 @@ local function createFinder(D)
     -- Roblox public-server directory, independent of the Finder report feed.
     status.Size=UDim2.new(0.53,-14,0,24)
     status.TextSize=11
-    -- Beast Auto Join: selects the highest-income valid egg from the shared Finder feed.
+    -- Auto Join: selects the highest-income valid egg from the shared Finder feed.
     local autoJoinEnabled=false
     local autoJoinBusy=false
     local autoJoinCandidates={}
     local autoJoinCandidateIndex=1
     local autoJoinRetryRequested=false
-    local autoJoinButton=D.make('TextButton',{Name='BeastAutoJoin',Text='BEAST AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(35,105,75),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
+    local autoJoinMinValue=1e9
+    local autoJoinMinText='1B'
+    local function parseAutoJoinMinValue(text)
+        if type(text)~='string' then return nil end
+        local compact=text:upper():gsub('%s+','')
+        local amount,suffix=compact:match('^(%d+%.?%d*)([MB])$')
+        amount=tonumber(amount)
+        if not amount or not suffix then return nil end
+        local value=amount*(suffix=='M' and 1e6 or 1e9)
+        if value<1e9 or value>50e9 then return nil end
+        return value
+    end
+    local autoJoinMinBox=D.make('TextBox',{Name='MinAutoJoinValue',Text=autoJoinMinText,PlaceholderText='MIN AUTO JOIN VALUE (1B - 50B)',Position=UDim2.new(0,10,1,-96),Size=UDim2.new(1,-20,0,36),BackgroundColor3=Color3.fromRGB(67,70,80),TextColor3=Color3.new(1,1,1),PlaceholderColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold,ClearTextOnFocus=false},panel)
+    autoJoinMinBox.BackgroundColor3=Color3.fromRGB(67,70,80)
+    autoJoinMinBox.TextColor3=Color3.new(1,1,1)
+    autoJoinMinBox.PlaceholderColor3=Color3.new(1,1,1)
+    D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinMinBox)
+    autoJoinMinBox.Text='MIN AUTO JOIN VALUE: '..autoJoinMinText
+    autoJoinMinBox.Focused:Connect(function()
+        autoJoinMinBox.Text=autoJoinMinText
+    end)
+    autoJoinMinBox.FocusLost:Connect(function()
+        local value=parseAutoJoinMinValue(autoJoinMinBox.Text)
+        if value then
+            autoJoinMinValue=value
+            autoJoinMinText=autoJoinMinBox.Text:upper():gsub('%s+','')
+            autoJoinCandidates={};autoJoinCandidateIndex=1;feedAt=0
+        end
+        autoJoinMinBox.Text='MIN AUTO JOIN VALUE: '..autoJoinMinText
+    end)
+    local autoJoinButton=D.make('TextButton',{Name='AutoJoin',Text='AUTO JOIN: OFF',Position=UDim2.new(0,10,1,-52),Size=UDim2.new(1,-20,0,40),BackgroundColor3=Color3.fromRGB(190,45,45),TextColor3=Color3.new(1,1,1),TextSize=13,Font=Enum.Font.GothamBold},panel)
     D.make('UICorner',{CornerRadius=UDim.new(0,6)},autoJoinButton)
     autoJoinButton.TextScaled=true;autoJoinButton.TextWrapped=false
     D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=14},autoJoinButton)
     local function paintAutoJoin()
-        autoJoinButton.Text=autoJoinEnabled and 'BEAST AUTO JOIN: ON' or 'BEAST AUTO JOIN: OFF'
-        autoJoinButton.BackgroundColor3=autoJoinEnabled and Color3.fromRGB(30,155,85) or Color3.fromRGB(35,105,75)
+        autoJoinButton.Text=autoJoinEnabled and 'AUTO JOIN: ON' or 'AUTO JOIN: OFF'
+        autoJoinButton.BackgroundColor3=autoJoinEnabled and Color3.fromRGB(30,155,85) or Color3.fromRGB(190,45,45)
     end
     autoJoinButton.Activated:Connect(function()
         if not active then return end
@@ -747,8 +700,8 @@ local function createFinder(D)
                 return Http:JSONDecode(response.Body)
             end)
             if ok and type(data)=='table' and type(data.endpoint)=='string' and data.endpoint:match('^https://[%w%.%-]+$') and type(data.roomKey)=='string' then
+                -- Experimental config is optional metadata-only; never replace the primary public feed endpoint.
                 featureConfig=data
-                if publicBroadcastConfig then config=data;feedAt=-math.huge end
             end
             task.wait(60)
         end
@@ -757,7 +710,7 @@ local function createFinder(D)
         local data,err=network('https://raw.githubusercontent.com/syss1211/Tenshi-script/main/NYX-Finder-Config.json?nyx='..os.time(),'GET')
         if not data then return false,err end
         if type(data.endpoint)~='string' or not data.endpoint:match('^https://[%w%.%-]+$') or type(data.roomKey)~='string' then return false,'Finder configuration unavailable' end
-        publicBroadcastConfig=data;config=featureConfig or data; configAt=os.clock()
+        publicBroadcastConfig=data;config=data; configAt=os.clock()
         if false and type(writefile)=='function' then
             local asset=getcustomasset or getsynasset
             if type(asset)=='function' then
@@ -769,7 +722,7 @@ local function createFinder(D)
         end
         return true
     end
-    local function headers(read) return {['Content-Type']='application/json',['X-NYX-Room']=config.roomKey,['X-NYX-Viewer']=read and viewerCode~='' and viewerCode or nil} end
+    local function headers(read) return {['Content-Type']='application/json',['X-NYX-Room']=config.roomKey} end
     local broadcastInterval=15
     local function snapshot()
         local eggs={}
@@ -826,26 +779,24 @@ local function createFinder(D)
     D.flushReport=report
     local function refresh()
         local epoch=queryEpoch
-        local query='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId..'&limit=10&tier='..(viewerCode~='' and 'premium' or 'public')..'&offset=0&minRate='..tostring(minRate)..'&minRank='..tostring(minRank)
+        local query='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId..'&limit=10&tier=public&offset=0&minRate='..tostring(minRate)..'&minRank='..tostring(minRank)
         local requestedCycle=cycleInfo()
         if requestedCycle then query=query..'&cycleRemainingMs='..tostring(math.max(0,requestedCycle.remaining*1000))..'&cycleId='..tostring(requestedCycle.resetAt) end
         if othersOnly then query=query..'&onlyJob='..Http:UrlEncode(game.JobId) end
         local data,err=network(config.endpoint..'/v1/eggs'..query,'GET',nil,headers(true))
         if epoch~=queryEpoch then return true end
         if not data or type(data.items)~='table' then
-            if err=='HTTP 401' then viewerCode=''; unlock.Text='PREMIUM'; feed={}; pageOffset=0 end
-            return false,err=='HTTP 401' and 'Wrong access code' or err or 'Invalid finder feed'
+            return false,err or 'Invalid finder feed'
         end
-        unlock.Text=data.tier=='premium' and 'PREMIUM ON' or 'PREMIUM'
         nextOffset=tonumber(data.nextOffset)
-        page.Text=data.tier=='premium' and 'GLOBAL TOP 10' or 'TOP 10'
+        page.Text='TOP 10'
         clockOffset=(tonumber(data.serverTime) or os.time()*1000)/1000-os.clock()
         localStates={}
         for _,entry in ipairs(data.localStates or {}) do localStates[entry.key]=entry end
         feed={}
         for _,entry in ipairs(data.items) do if D.publicEntryAllowed(entry,(os.clock()+clockOffset)*1000) then feed[#feed+1]=entry end end
         D.savePublicSightings();feedAt=os.clock()
-        queryStatus=data.tier=='premium' and string.format('PREMIUM | %d servers | %d reporters',data.servers or 0,data.participants or 0) or 'Updated'
+        queryStatus='Updated'
         return true
     end
     -- Auto Join tries no more than the three highest-value eligible reports.
@@ -878,6 +829,7 @@ local function createFinder(D)
                                 and expiry and expiry>now and rate and rate>0
                                 and entry.uid~=nil and entry.full~=true and entry.unavailable~=true
                                 and entry.takenConfirmed~=true
+                                and rate>=autoJoinMinValue
                                 and D.publicEntryAllowed(entry,now)
                             if validEntry then candidates[#candidates+1]=entry end
                         end
@@ -1116,14 +1068,12 @@ local function createFinder(D)
     end
     local buttonFontLookup={
         ["FULL"]='kindly_full',
-        ["PREMIUM"]='varesco_b08',
         ["JOINING..."]='varesco_b12',
         ["MATCHMAKING..."]='varesco_b13',
         ["MIN RARITY: Eternal"]='varesco_b05',
         ["MIN RARITY: Any"]='varesco_b07',
         ["MIN RARITY: Secret"]='varesco_b04',
         ["MIN RARITY: Cosmic"]='varesco_b03',
-        ["PREMIUM ON"]='varesco_b09',
         ["MIN RARITY: Mythic"]='varesco_b02',
         ["TRY AGAIN"]='varesco_b14',
         ["ALL SERVERS"]='varesco_b00',
@@ -1156,8 +1106,8 @@ local function createFinder(D)
         refreshFont()
     end
     -- Bottom options use crisp native rounded text instead of bitmap captions.
-    for _,button in ipairs({scope,myScope,rarity,unlock,refreshButton,sizeMinus,sizePlus}) do styleRaisedButton(button) end
-    for _,button in ipairs({scope,myScope,rarity,unlock}) do
+    for _,button in ipairs({scope,myScope,rarity,refreshButton}) do styleRaisedButton(button) end
+    for _,button in ipairs({scope,myScope,rarity}) do
         button.Font=Enum.Font.FredokaOne
         local caption=button:FindFirstChild('RaisedCaption')
         if caption then
@@ -1168,27 +1118,6 @@ local function createFinder(D)
             D.make('UIStroke',{Color=Color3.new(0,0,0),Thickness=2},caption)
         end
     end
-    local premiumStar=D.make('ImageLabel',{Name='PremiumStar',Image='',BackgroundTransparency=1,Position=UDim2.new(0,8,0.5,-12),Size=UDim2.fromOffset(24,24),ScaleType=Enum.ScaleType.Fit,Active=false,ZIndex=unlock.ZIndex+4},unlock)
-    local premiumGlyph=unlock:FindFirstChild('CustomButtonFont')
-    if premiumGlyph then premiumGlyph.Position=UDim2.new(0.5,12,0.5,0);premiumGlyph.Size=UDim2.new(1,-44,0,20) end
-    local premiumCaption=unlock:FindFirstChild('RaisedCaption')
-    if premiumCaption then premiumCaption.Position=UDim2.fromOffset(24,0);premiumCaption.Size=UDim2.new(1,-28,1,0) end
-    task.spawn(function()
-        local asset=getcustomasset or getsynasset
-        if type(asset)~='function' or type(writefile)~='function' then return end
-        local filename='tenshi_beta_premium_star_v1.png'
-        local ready=false
-        if type(isfile)=='function' then pcall(function() ready=isfile(filename) end) end
-        if not ready then
-            while active and not config do task.wait(0.2) end
-            if not active then return end
-            local ok,bytes=pcall(function() return game:HttpGet(config.endpoint..'/assets/premium-star-v1.png') end)
-            if not ok or type(bytes)~='string' or bytes:sub(1,8)~=string.char(137)..'PNG'..string.char(13,10,26,10) then return end
-            pcall(function() writefile(filename,bytes) end)
-        end
-        local ok,image=pcall(asset,filename)
-        if ok and premiumStar.Parent then premiumStar.Image=image end
-    end)
     do
     -- Settings and artwork are independent of the report worker/network lock.
     local uiAssetUris={}
@@ -1304,14 +1233,6 @@ local function createFinder(D)
         end
     end)
     D.gui.Destroying:Connect(function() hotkeyConnection:Disconnect() end)
-    -- Reserve a separate star slot. Its right edge never touches the caption.
-    premiumStar.Position=UDim2.new(0,8,0.5,-9);premiumStar.Size=UDim2.fromOffset(18,18)
-    if premiumCaption then
-        premiumCaption.Position=UDim2.fromOffset(34,2);premiumCaption.Size=UDim2.new(1,-42,1,-4)
-        local limit=premiumCaption:FindFirstChildOfClass('UITextSizeConstraint')
-        if limit then limit.MaxTextSize=20 end
-    end
-
     do
     -- Header title and egg are laid out as one centered visual group.
     do
@@ -1370,8 +1291,6 @@ local function createFinder(D)
         end)
         controlImages[key]=image
     end
-    pngControl(sizePlus,'plus','+',Color3.fromRGB(45,90,245))
-    pngControl(sizeMinus,'minus','â',Color3.fromRGB(235,30,55))
     task.spawn(function()
         local asset=getcustomasset or getsynasset
         if type(asset)~='function' or type(writefile)~='function' or type(D.decodeAsset)~='function' then return end
@@ -1898,7 +1817,7 @@ local function createFinder(D)
         end
         loadingVisible=#entries==0 and (othersOnly and type(D.ready)=='function' and not D.ready() or not othersOnly and feedAt<=0)
         aliveMessage.Visible=#entries==0
-        aliveMessage.Text=loadingVisible and loadingText(os.clock()) or othersOnly and (type(D.ready)=='function' and not D.ready() and 'Reading current server eggs...' or 'No matching eggs in this server') or PREMIUM_EDITION and viewerCode=='' and 'Enter your Premium access code' or 'No matching eggs right now'
+        aliveMessage.Text=loadingVisible and loadingText(os.clock()) or othersOnly and (type(D.ready)=='function' and not D.ready() and 'Reading current server eggs...' or 'No matching eggs in this server') or 'No matching eggs right now'
         for i,entry in ipairs(entries) do
             local signature=cardSignature(entry)
             local card=cardsByKey[entry.key]
@@ -2292,7 +2211,7 @@ local function createFinder(D)
                     reportStatus=message
                     if not success then warn('Tenshi broadcast: '..tostring(message)) end
                 end
-                if (not PREMIUM_EDITION or viewerCode~='') and os.clock()-feedAt>=3 then local success,message=refresh(); if not success then queryStatus='Finder: '..tostring(message) end end
+                if os.clock()-feedAt>=3 then local success,message=refresh(); if not success then queryStatus='Finder: '..tostring(message) end end
             end)
             if not ok then reportStatus='BCAST: '..tostring(err);queryStatus=tostring(err);warn('Tenshi broadcast: '..tostring(err)) end
             task.wait(1)
@@ -2300,7 +2219,7 @@ local function createFinder(D)
     end)
     task.spawn(function()
         while active do
-            status.Text=PREMIUM_EDITION and (tostring(reportStatus)..'\n'..tostring(queryStatus)) or (joining and 'Joining serverâ¦' or tostring(reportStatus))
+            status.Text=joining and 'Joining serverâ¦' or (tostring(reportStatus)..(queryStatus~='' and '\n'..tostring(queryStatus) or ''))
             local cycle=cycleInfo()
             if cycle then
                 local seconds=math.max(0,math.ceil(cycle.remaining))
