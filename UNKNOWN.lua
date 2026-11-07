@@ -302,7 +302,7 @@ local function createFinder(D)
     local localStates={}
     local reportStatus='Connecting'
     local queryStatus=''
-    local minRate,minRank=1e9,0
+    local minRate,minRank=0,0 -- Show all egg income values; Auto Join has its own separate minimum.
     local joining=false
     local localHighlight
     local pageOffset,nextOffset=0,nil
