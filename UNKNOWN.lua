@@ -557,9 +557,10 @@ local function createFinder(D)
         rarity.Text=rarityButtonText()
         queryEpoch+=1;feed={};pageOffset=0;feedAt=-math.huge;saveSettings()
     end)
-    local refreshButton=D.make('TextButton',{Text='REFRESH',Position=UDim2.fromOffset(10,54),Size=UDim2.new(1,-20,0,30),BackgroundColor3=Color3.fromRGB(115,215,45),BackgroundTransparency=0.15,TextColor3=Color3.new(1,1,1),TextSize=14},panel)
+    local refreshButton=D.make('TextButton',{Name='RefreshButton',Text='REFRESH',Position=UDim2.fromOffset(10,54),Size=UDim2.new(1,-20,0,30),BackgroundColor3=Color3.fromRGB(115,215,45),BackgroundTransparency=0.15,TextColor3=Color3.new(1,1,1),TextSize=14,Active=true,Selectable=true,ZIndex=20},panel)
     local resetTimer=D.label(refreshButton,'RESET --:--',UDim2.fromOffset(8,0),UDim2.new(0.28,-8,1,0),Color3.fromRGB(230,245,255),13)
     resetTimer.TextXAlignment=Enum.TextXAlignment.Left
+    resetTimer.ZIndex=21
     resetTimer.TextTruncate=Enum.TextTruncate.AtEnd
     resetTimer.Active=false
     local refreshing=false
@@ -2025,9 +2026,10 @@ local function createFinder(D)
         list.CanvasPosition=Vector2.new(0,0)
         queueRender()
     end
-    refreshButton.Activated:Connect(function()
+    local function startRefresh()
         if refreshing or not active then return end
         refreshing=true;refreshButton.Text='REFRESHING.'
+        if aliveMessage and aliveMessage.Visible then aliveMessage.Text='Refreshing server list...' end
         task.spawn(function()
             local ok,err=pcall(function()
                 local deadline=os.clock()+12
@@ -2048,7 +2050,14 @@ local function createFinder(D)
                 queryStatus=ok and 'List refreshed' or ('Refresh failed: '..tostring(err))
             end
         end)
-    end)
+    end
+    refreshButton.Activated:Connect(startRefresh)
+    refreshButton.MouseButton1Click:Connect(startRefresh)
+    -- A transparent, full-size touch target sits above decorative button layers.
+    local refreshHitArea=D.make('TextButton',{Name='RefreshHitArea',Text='',Position=refreshButton.Position,Size=refreshButton.Size,
+        BackgroundTransparency=1,TextTransparency=1,AutoButtonColor=false,Active=true,Selectable=true,ZIndex=40},panel)
+    refreshHitArea.Activated:Connect(startRefresh)
+    refreshHitArea.MouseButton1Click:Connect(startRefresh)
     do
         local Tweens=game:GetService('TweenService')
         local states={}
