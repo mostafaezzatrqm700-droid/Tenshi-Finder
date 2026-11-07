@@ -659,7 +659,7 @@ local function createFinder(D)
         autoJoinEnabled=not autoJoinEnabled
         autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
         paintAutoJoin()
-        queryStatus=autoJoinEnabled and 'Auto Join enabled: checking the top 3 servers' or 'Auto Join disabled'
+        queryStatus=autoJoinEnabled and 'Auto Join enabled: checking all available pages' or 'Auto Join disabled'
     end)
     local publicBroadcastConfig=nil
     local featureConfig=nil
@@ -772,27 +772,87 @@ local function createFinder(D)
     D.flushReport=report
     local function refresh()
         local epoch=queryEpoch
-        local query='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId..'&limit=10&tier=public&offset=0&minRate='..tostring(minRate)..'&minRank='..tostring(minRank)
+        local baseQuery='?localJob='..Http:UrlEncode(game.JobId)..'&placeId='..game.PlaceId..'&limit=10&tier=public&minRate='..tostring(minRate)..'&minRank='..tostring(minRank)
         local requestedCycle=cycleInfo()
-        if requestedCycle then query=query..'&cycleRemainingMs='..tostring(math.max(0,requestedCycle.remaining*1000))..'&cycleId='..tostring(requestedCycle.resetAt) end
-        if othersOnly then query=query..'&onlyJob='..Http:UrlEncode(game.JobId) end
-        local data,err=network(config.endpoint..'/v1/eggs'..query,'GET',nil,headers())
-        if epoch~=queryEpoch then return true end
-        if not data or type(data.items)~='table' then
-            return false,err or 'Invalid finder feed'
+        if requestedCycle then baseQuery=baseQuery..'&cycleRemainingMs='..tostring(math.max(0,requestedCycle.remaining*1000))..'&cycleId='..tostring(requestedCycle.resetAt) end
+        if othersOnly then baseQuery=baseQuery..'&onlyJob='..Http:UrlEncode(game.JobId) end
+
+        -- Follow the Finder API's nextOffset cursor, with strict bounds and
+        -- duplicate-page protection so a malformed cursor cannot loop forever.
+        local allItems,seenItems={},{}
+        local mergedStates={}
+        local offset,maxPages=0,30
+        local pageCount=0
+        local lastPageSignature=nil
+        local serverTime=nil
+        while pageCount<maxPages do
+            local requestQuery=baseQuery..'&offset='..tostring(offset)
+            local data,err=network(config.endpoint..'/v1/eggs'..requestQuery,'GET',nil,headers())
+            if epoch~=queryEpoch then return true end
+            if not data or type(data.items)~='table' then
+                if pageCount==0 then return false,err or 'Invalid finder feed' end
+                queryStatus='Finder pagination stopped: '..tostring(err or 'invalid page')
+                break
+            end
+
+            pageCount+=1
+            serverTime=tonumber(data.serverTime) or serverTime
+            for _,entry in ipairs(data.localStates or {}) do
+                if type(entry)=='table' and entry.key~=nil then mergedStates[entry.key]=entry end
+            end
+
+            local signatureParts={}
+            for _,entry in ipairs(data.items) do
+                local identity
+                if type(entry)=='table' then
+                    identity=type(entry.key)=='string' and entry.key
+                        or (tostring(entry.placeId or '')..':'..tostring(entry.jobId or '')..':'..tostring(entry.uid or ''))
+                end
+                if identity and identity~='::' then
+                    signatureParts[#signatureParts+1]=identity
+                    if not seenItems[identity] then
+                        seenItems[identity]=true
+                        allItems[#allItems+1]=entry
+                    end
+                end
+            end
+            local signature=table.concat(signatureParts,'|')
+            if #data.items==0 or signature=='' or signature==lastPageSignature then
+                nextOffset=nil
+                break
+            end
+            lastPageSignature=signature
+            local following=tonumber(data.nextOffset)
+            if not following or following<=offset then
+                nextOffset=following
+                break
+            end
+            nextOffset=following
+            if following==offset then break end
+            offset=following
+            task.wait(0.12)
         end
-        nextOffset=tonumber(data.nextOffset)
-        page.Text='TOP 10'
-        clockOffset=(tonumber(data.serverTime) or os.time()*1000)/1000-os.clock()
-        localStates={}
-        for _,entry in ipairs(data.localStates or {}) do localStates[entry.key]=entry end
+
+        if epoch~=queryEpoch then return true end
+        clockOffset=(serverTime or os.time()*1000)/1000-os.clock()
+        localStates=mergedStates
         feed={}
-        for _,entry in ipairs(data.items) do if D.publicEntryAllowed(entry,(os.clock()+clockOffset)*1000) then feed[#feed+1]=entry end end
-        D.savePublicSightings();feedAt=os.clock()
-        queryStatus='Updated'
+        for _,entry in ipairs(allItems) do
+            if D.publicEntryAllowed(entry,(os.clock()+clockOffset)*1000) then
+                feed[#feed+1]=entry
+            end
+        end
+        D.savePublicSightings()
+        feedAt=os.clock()
+        if pageCount>=maxPages and nextOffset and nextOffset>offset then
+            queryStatus='Updated '..tostring(#feed)..' reports (page limit reached)'
+        else
+            queryStatus='Updated '..tostring(#feed)..' reports from '..tostring(pageCount)..' pages'
+        end
+        page.Text='TOP '..tostring(#feed)
         return true
     end
-    -- Auto Join tries no more than the three highest-value eligible reports.
+    -- Auto Join tries eligible reports in global income order; failures advance to the next.
     -- Reservation failures and asynchronous teleport failures advance to the next candidate.
     task.spawn(function()
         while active do
@@ -831,12 +891,12 @@ local function createFinder(D)
                             if ar~=br then return ar>br end
                             return tostring(a.jobId)<tostring(b.jobId)
                         end)
-                        for i=1,math.min(3,#candidates) do autoJoinCandidates[i]=candidates[i] end
+                        for i=1,#candidates do autoJoinCandidates[i]=candidates[i] end
                         autoJoinCandidateIndex=1
                         autoJoinRetryRequested=false
                     end
                     if autoJoinCandidateIndex>#autoJoinCandidates then
-                        queryStatus='Auto Join: all top 3 attempts failed'
+                        queryStatus='Auto Join: all available candidates failed'
                         autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
                         feedAt=0
                         return
@@ -2070,7 +2130,7 @@ local function createFinder(D)
             if autoJoinEnabled and autoJoinCandidateIndex<=#autoJoinCandidates then
                 autoJoinCandidateIndex+=1
                 autoJoinRetryRequested=true
-                queryStatus='Auto Join: teleport failed; trying next of top 3'
+                queryStatus='Auto Join: teleport failed; trying the next candidate'
             end
         end
     end)
