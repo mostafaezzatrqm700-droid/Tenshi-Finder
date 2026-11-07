@@ -492,7 +492,7 @@ local function createFinder(D)
     end)
     D.gui.Destroying:Connect(function() moveConnection:Disconnect();endConnection:Disconnect();drag=nil end)
     local status=D.label(panel,'Connectingâ¦',UDim2.fromOffset(14,52),UDim2.new(1,-28,0,48),Color3.fromRGB(210,218,240),14)
-    status.Visible=false
+    status.Visible=true
     status.TextWrapped=true
     local discordSubtitle=D.label(panel,DISCORD,UDim2.fromOffset(10,27),UDim2.fromOffset(205,14),Color3.new(1,1,1),11)
     discordSubtitle.TextSize=11
