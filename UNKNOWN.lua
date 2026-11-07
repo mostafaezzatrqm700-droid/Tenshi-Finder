@@ -2285,7 +2285,7 @@ local function createFinder(D)
     end)
     task.spawn(function()
         while active do
-            status.Text=joining and 'Joining serverâ¦' or (tostring(reportStatus)..(queryStatus~='' and '\\n'..tostring(queryStatus) or ''))
+            status.Text=joining and 'Joining serverâ¦' or (tostring(reportStatus)..(queryStatus~='' and '\n'..tostring(queryStatus) or ''))
             local cycle=cycleInfo()
             if cycle then
                 local seconds=math.max(0,math.ceil(cycle.remaining))
