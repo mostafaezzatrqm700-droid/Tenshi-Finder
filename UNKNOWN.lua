@@ -2442,3 +2442,4 @@ end
  task.spawn(function()
     local ok,err=pcall(run)
     if not ok then warn('NYX Finder startup:',err) end
+end)
