@@ -344,12 +344,12 @@ local function createFinder(D)
     D.make('UICorner',{CornerRadius=UDim.new(0,4)},bar)
     D.make('UICorner',{CornerRadius=UDim.new(0,4)},bar)
     D.make('UIGradient',{Color=ColorSequence.new(Color3.fromRGB(125,130,137),Color3.fromRGB(70,72,80)),Rotation=0},bar)
-    local heading=D.label(panel,PREMIUM_EDITION and 'Tenshi Finder / PREMIUM' or 'Tenshi Finder',UDim2.fromOffset(14,8),UDim2.new(1,-55,0,32),nil,22)
+    local heading=D.label(panel,PREMIUM_EDITION and 'UNKNOWN / PREMIUM' or 'UNKNOWN',UDim2.fromOffset(14,8),UDim2.new(1,-55,0,32),nil,22)
     local open=D.make('ImageButton',{Image='',Position=UDim2.fromOffset(18,80),Size=UDim2.fromOffset(82,82),BackgroundColor3=Color3.fromRGB(250,250,250),ScaleType=Enum.ScaleType.Fit,ClipsDescendants=true},D.gui)
     D.make('UICorner',{CornerRadius=UDim.new(1,0)},open)
     D.make('UIStroke',{Color=Color3.fromRGB(185,25,40),Thickness=3},open)
-    local fallback=D.label(open,'Tenshi',UDim2.new(),UDim2.fromScale(1,1),Color3.fromRGB(150,25,40),19)
-    local iconCaption=D.label(open,'FINDER',UDim2.new(0.5,-44,1,5),UDim2.fromOffset(88,27),Color3.new(1,1,1),18)
+    local fallback=D.label(open,'UNKNOWN',UDim2.new(),UDim2.fromScale(1,1),Color3.fromRGB(150,25,40),19)
+    local iconCaption=D.label(open,'UNKNOWN',UDim2.new(0.5,-44,1,5),UDim2.fromOffset(88,27),Color3.new(1,1,1),18)
     open.ClipsDescendants=false
     iconCaption.TextStrokeTransparency=0.15;iconCaption.TextXAlignment=Enum.TextXAlignment.Center
     local function restorePosition(target,value)
@@ -421,7 +421,7 @@ local function createFinder(D)
     heading.TextSize=19
     local brandLogo=D.make('ImageLabel',{Name='TenshiBrandLogo',Position=UDim2.fromOffset(10,2),Size=UDim2.fromOffset(180,42),BackgroundTransparency=1,Image='',ScaleType=Enum.ScaleType.Fit,Active=true},panel)
     brandLogo.Visible=false
-    heading.Text='Tenshi beta v0.5'
+    heading.Text='UNKNOWN'
     heading.TextSize=18
     heading.Font=Enum.Font.Arcade
     heading.TextScaled=true
@@ -1243,7 +1243,7 @@ local function createFinder(D)
             D.make('ImageLabel',{Name='ModalStuds',Image=mutationSprites.studs_v05.image,Size=UDim2.fromScale(1,1),BackgroundTransparency=1,ScaleType=Enum.ScaleType.Tile,TileSize=UDim2.fromOffset(256,256),ImageColor3=Color3.fromRGB(145,148,158),ImageTransparency=0.7,Active=false,ZIndex=box.ZIndex},box)
         end
     end
-    heading.Text='Tenshi Finder Beta v0.5'
+    heading.Text='UNKNOWN'
     heading.AnchorPoint=Vector2.new(0.5,0)
     heading.Position=UDim2.new(0.5,-10,0,2);heading.Size=UDim2.new(1,-112,0,24)
     heading.TextXAlignment=Enum.TextXAlignment.Center
