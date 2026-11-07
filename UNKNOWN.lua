@@ -1818,7 +1818,7 @@ local function createFinder(D)
         end
         loadingVisible=#entries==0 and (othersOnly and type(D.ready)=='function' and not D.ready() or not othersOnly and feedAt<=0)
         aliveMessage.Visible=#entries==0
-        aliveMessage.Text=loadingVisible and loadingText(os.clock()) or othersOnly and (type(D.ready)=='function' and not D.ready() and 'Reading current server eggs...' or 'No matching eggs in this server') or 'No matching eggs right now'
+        aliveMessage.Text=loadingVisible and (queryStatus~='' and queryStatus~='Updated' and queryStatus or loadingText(os.clock())) or othersOnly and (type(D.ready)=='function' and not D.ready() and 'Reading current server eggs...' or 'No matching eggs in this server') or 'No matching eggs right now'
         for i,entry in ipairs(entries) do
             local signature=cardSignature(entry)
             local card=cardsByKey[entry.key]
@@ -2058,6 +2058,16 @@ local function createFinder(D)
         BackgroundTransparency=1,TextTransparency=1,AutoButtonColor=false,Active=true,Selectable=true,ZIndex=40},panel)
     refreshHitArea.Activated:Connect(startRefresh)
     refreshHitArea.MouseButton1Click:Connect(startRefresh)
+    -- Fallback for mobile executors that swallow GuiButton activation events.
+    local refreshInputConnection=Input.InputBegan:Connect(function(input)
+        if input.UserInputType~=Enum.UserInputType.Touch and input.UserInputType~=Enum.UserInputType.MouseButton1 then return end
+        local point=input.Position
+        local origin,size=refreshButton.AbsolutePosition,refreshButton.AbsoluteSize
+        if point.X>=origin.X and point.X<=origin.X+size.X and point.Y>=origin.Y and point.Y<=origin.Y+size.Y then
+            startRefresh()
+        end
+    end)
+    D.gui.Destroying:Connect(function() refreshInputConnection:Disconnect() end)
     do
         local Tweens=game:GetService('TweenService')
         local states={}
