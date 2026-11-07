@@ -1940,11 +1940,11 @@ local function createFinder(D)
                 if (os.clock()+clockOffset)*1000>=entry.expiresAt then
                     joining=false;joiningKey=nil;feedAt=-math.huge;render();return
                 end
-                if not config then joining=false;joiningKey=nil;queryStatus='Finder not connected';return end
+                if not config then joining=false;joiningKey=nil;queryStatus='Finder not connected';status.Visible=true;return end
                 local claim,claimError=network(config.endpoint..'/v1/join','POST',Http:JSONEncode({placeId=entry.placeId,jobId=entry.jobId,uid=entry.uid,reporterId=reporterId,userId=D.player.UserId}),headers())
                 if claim and claim.allowed~=true and (claim.unavailable or claim.full) then
                     joining=false;joiningKey=nil;entry.full=true;entry.unavailable=claim.unavailable==true;entry.takenConfirmed=claim.takenConfirmed==true;lastRender=nil
-                    queryStatus='Egg no longer available';render();return
+                    queryStatus='Egg no longer available';status.Visible=true;render();return
                 end
                 if not claim or claim.allowed~=true then
                     joining=false;joiningKey=nil;feedAt=-math.huge
@@ -1953,6 +1953,7 @@ local function createFinder(D)
                         render()
                     end
                     queryStatus=claim and (claim.error or 'Server reserved; choose another') or ('Join reservation failed: '..tostring(claimError))
+                    status.Visible=true
                     return
                 end
                 -- Refresh our own server report as best-effort only; a report failure
@@ -1962,12 +1963,12 @@ local function createFinder(D)
                 local joinExpiry=math.min(entry.expiresAt,tonumber(claim.expiresAt) or entry.expiresAt)
                 if (os.clock()+clockOffset)*1000>=joinExpiry then
                     joining=false;joiningKey=nil;feedAt=-math.huge;entry.expiresAt=joinExpiry;render()
-                    queryStatus='Reset reached; refreshing';return
+                    queryStatus='Reset reached; refreshing';status.Visible=true;return
                 end
                 local destinationPlaceId=tonumber(entry.placeId)
                 local destinationJobId=tostring(entry.jobId or '')
                 if not destinationPlaceId or destinationPlaceId<=0 or destinationJobId=='' then
-                    joining=false;joiningKey=nil;queryStatus='Join failed: invalid server ID';updateCard(card,entry,card.row.LayoutOrder or 1);return
+                    joining=false;joiningKey=nil;queryStatus='Join failed: invalid server ID';status.Visible=true;updateCard(card,entry,card.row.LayoutOrder or 1);return
                 end
                 rememberTeleportTarget(entry)
                 D.saveGuiBeforeTeleport()
@@ -1978,6 +1979,7 @@ local function createFinder(D)
                 end)
                 if not ok then
                     queryStatus='Join failed: '..tostring(err)
+                    status.Visible=true
                     joining=false;joiningKey=nil
                     updateCard(card,entry,card.row.LayoutOrder or 1)
                     warn('UNKNOWN Join teleport error:',err)
@@ -1986,6 +1988,7 @@ local function createFinder(D)
                     if joining and joiningKey==entry.key then
                         joining=false;joiningKey=nil
                         queryStatus='Teleport did not start; try JOIN again'
+                        status.Visible=true
                         updateCard(card,entry,card.row.LayoutOrder or 1)
                     end
                 end)
@@ -2178,7 +2181,7 @@ local function createFinder(D)
     panel.Visible=true
     local failed=Teleports.TeleportInitFailed:Connect(function(who,_,message)
         if who==D.player then
-            joining=false;queryStatus='Join failed: '..tostring(message)
+            joining=false;queryStatus='Join failed: '..tostring(message);status.Visible=true
             if autoJoinEnabled and autoJoinCandidateIndex<=#autoJoinCandidates then
                 autoJoinCandidateIndex+=1
                 autoJoinRetryRequested=true
