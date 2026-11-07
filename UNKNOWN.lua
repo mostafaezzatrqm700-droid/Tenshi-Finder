@@ -2139,18 +2139,35 @@ local function createFinder(D)
     D.gui.Destroying:Connect(function() active=false; failed:Disconnect();if localHighlight then localHighlight:Destroy() end end)
     task.spawn(function()
         local lastReport=-math.huge
+        local lastReportAttempt=-math.huge
         local lastPeakSignature=nil
         while active do
             local ok,err=pcall(function()
                 if networkBusy then return end
                 if not config or os.clock()-configAt>60 then local success,message=loadConfig(); if not success then error(message) end end
                 local peak=snapshot()
-                local ids={}
-                for i=1,math.min(10,#peak) do ids[#ids+1]=peak[i].uid end
-                local signature=table.concat(ids,';')
-                if os.clock()-lastReport>=broadcastInterval or (#ids>0 and signature~=lastPeakSignature) then
+                local parts={}
+                for i=1,math.min(10,#peak) do
+                    local egg=peak[i]
+                    parts[#parts+1]=table.concat({
+                        tostring(egg.uid or ''),
+                        tostring(egg.rate or ''),
+                        tostring(egg.scale or ''),
+                        tostring(egg.weight or ''),
+                        tostring(egg.mutations or ''),
+                        tostring(egg.traitsKnown),
+                        tostring(egg.source or '')
+                    },':')
+                end
+                local signature=table.concat(parts,';')
+                local now=os.clock()
+                local heartbeatDue=now-lastReport>=broadcastInterval
+                local snapshotChanged=#parts>0 and signature~=lastPeakSignature
+                local changeDue=snapshotChanged and now-lastReportAttempt>=2
+                if heartbeatDue or changeDue then
+                    lastReportAttempt=now
                     local success,message=report()
-                    if success then lastPeakSignature=signature;lastReport=os.clock() end
+                    if success then lastPeakSignature=signature;lastReport=now end
                     reportStatus=message
                     if not success then warn('Tenshi broadcast: '..tostring(message)) end
                 end
