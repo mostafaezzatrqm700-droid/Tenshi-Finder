@@ -320,7 +320,6 @@ local function createFinder(D)
     if type(settings.menuHotkey)=='string' then
         pcall(function() local saved=Enum.KeyCode[settings.menuHotkey];if saved and saved~=Enum.KeyCode.Unknown and not (settings.menuHotkey=='RightShift' and settings.hotkeyDefaultVersion~=2) then menuHotkey=saved end end)
     end
-    local themeModal,loadUiAsset,syncCloseArt
     local sharingNotice=D.label(D.gui,'EGG FINDER ON â¢ Sharing egg sightings & server ID',UDim2.new(0,12,1,-28),UDim2.new(1,-24,0,22),Color3.fromRGB(245,245,245),12)
     sharingNotice.Visible=false;sharingNotice.TextSize=12;sharingNotice.TextWrapped=true;sharingNotice.TextStrokeTransparency=0.15
     local panel=D.make('Frame',{AnchorPoint=Vector2.new(1,0.5),Position=UDim2.new(1,-18,0.5,0),Size=UDim2.new(0.94,0,0.86,0),BackgroundColor3=Color3.fromRGB(22,23,27),Visible=false},D.gui)
@@ -1090,7 +1089,7 @@ local function createFinder(D)
         refreshFont()
     end
     -- Bottom options use crisp native rounded text instead of bitmap captions.
-    for _,button in ipairs({scope,myScope,rarity,refreshButton,sizeMinus,sizePlus}) do styleRaisedButton(button) end
+    for _,button in ipairs({scope,myScope,rarity,refreshButton}) do styleRaisedButton(button) end
     for _,button in ipairs({scope,myScope,rarity}) do
         button.Font=Enum.Font.FredokaOne
         local caption=button:FindFirstChild('RaisedCaption')
@@ -1140,9 +1139,6 @@ local function createFinder(D)
         local discordLimit=discordSubtitle:FindFirstChildOfClass('UITextSizeConstraint');if discordLimit then discordLimit.MaxTextSize=14 end
         D.make('UIStroke',{Color=Color3.new(0,0,0),Thickness=1.3},discordSubtitle)
     end
-    sizeLabel.Font=Enum.Font.FredokaOne;sizeLabel.TextStrokeTransparency=1;sizeLabel.TextSize=20
-    local sizeLimit=sizeLabel:FindFirstChildOfClass('UITextSizeConstraint');if sizeLimit then sizeLimit.MaxTextSize=20 end
-    D.make('UIStroke',{Color=Color3.new(0,0,0),Thickness=1.6},sizeLabel)
     refreshButton.Font=Enum.Font.FredokaOne
     local refreshCaption=refreshButton:FindFirstChild('RaisedCaption')
     if refreshCaption then
@@ -1154,8 +1150,6 @@ local function createFinder(D)
     resetTimer.Font=Enum.Font.FredokaOne;resetTimer.TextSize=16;resetTimer.TextScaled=true;resetTimer.TextStrokeTransparency=1
     D.make('UITextSizeConstraint',{MinTextSize=10,MaxTextSize=16},resetTimer)
     D.make('UIStroke',{Color=Color3.new(0,0,0),Thickness=1.4},resetTimer)
-    local controlImages={}
-    local controlLayout={plus={x=-2.644934804413241,y=-2.2657973921765304,w=53.289869608826486,h=52.405215646940825},minus={x=-31.89664429530201,y=1.6469798657718115,w=111.79328859060402,h=44.70604026845638}}
     local function pngControl(button,key,fallback,color)
         for _,child in ipairs(button:GetChildren()) do child:Destroy() end
         button.BackgroundTransparency=1;button.AutoButtonColor=false;button.ClipsDescendants=true
@@ -1201,7 +1195,7 @@ local function createFinder(D)
             end
         end
     end)
-    syncCloseArt=function(button)
+    local function syncCloseArt(button)
         button.BackgroundTransparency=1;button.Font=Enum.Font.FredokaOne;button.TextSize=30
         button.TextColor3=Color3.fromRGB(245,45,45);button.TextStrokeColor3=Color3.new(0,0,0)
         local art=D.make('ImageLabel',{Name='SharedClosePNG',Image='',AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.new(1,-8,1,-8),BackgroundTransparency=1,ScaleType=Enum.ScaleType.Fit,Active=false,ZIndex=button.ZIndex+1},button)
