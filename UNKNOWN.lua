@@ -291,7 +291,7 @@ local function createFinder(D)
         local obj=originalLabel(parent,text,pos,size,color or Color3.fromRGB(240,242,255),math.max(fontSize or 15,14))
         obj.Font=Enum.Font.GothamBold;obj.TextStrokeColor3=Color3.new(0,0,0);obj.TextStrokeTransparency=0.45;return obj
     end
-    local DISCORD='https://discord.gg/Z65aABK2TT'
+    local DISCORD='https://discord.gg/RnkxkxZx'
     local Http=game:GetService('HttpService')
     local Teleports=game:GetService('TeleportService')
     local requestFn=request or http_request or (syn and syn.request) or (http and http.request)
