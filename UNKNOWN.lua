@@ -436,10 +436,10 @@ local function createFinder(D)
         local asset=getcustomasset or getsynasset
         if type(asset)~='function' or type(writefile)~='function' then return end
         local ok,result=pcall(function()
-            local bytes=game:HttpGet('https://raw.githubusercontent.com/syss1211/Tenshi-script/main/Tenshi-'..'Finder-Beta-Ghost.png')
+            local bytes=game:HttpGet('https://raw.githubusercontent.com/mostafaezzatrqm700-droid/UNKNOWN/work/unknown-white-value-edits/assets/unknown-skull.jpg')
             if #bytes<100 then return end
-            writefile('tenshi_beta_ghost_v2.png',bytes)
-            return asset('tenshi_beta_ghost_v2.png')
+            writefile('unknown_skull_icon.jpg',bytes)
+            return asset('unknown_skull_icon.jpg')
         end)
         if ok and type(result)=='string' and open.Parent then open.Image=result;fallback.Visible=false end
     end)
@@ -1032,6 +1032,21 @@ local function createFinder(D)
         wallpaper.TileSize=UDim2.fromOffset(256,256);wallpaper.ImageColor3=Color3.fromRGB(86,87,94);wallpaper.ImageTransparency=0.12
         wallpaperShade.BackgroundColor3=Color3.fromRGB(15,16,20);wallpaperShade.BackgroundTransparency=0.48
     end
+    task.spawn(function()
+        local asset=getcustomasset or getsynasset
+        if type(asset)~='function' or type(writefile)~='function' then return end
+        local ok=pcall(function()
+            local bytes=game:HttpGet('https://raw.githubusercontent.com/mostafaezzatrqm700-droid/UNKNOWN/work/unknown-white-value-edits/assets/unknown-stars.jpg')
+            if #bytes<100 then error('Starfield image unavailable') end
+            writefile('unknown_stars_wallpaper.jpg',bytes)
+            wallpaper.Image=asset('unknown_stars_wallpaper.jpg')
+            wallpaper.ScaleType=Enum.ScaleType.Crop
+            wallpaper.ImageColor3=Color3.new(1,1,1)
+            wallpaper.ImageTransparency=0.08
+            wallpaperShade.BackgroundColor3=Color3.fromRGB(4,7,24)
+            wallpaperShade.BackgroundTransparency=0.48
+        end)
+    end)
     local buttonFontLookup={
         ["FULL"]='kindly_full',
         ["JOINING..."]='varesco_b12',
