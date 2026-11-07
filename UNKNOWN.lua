@@ -314,6 +314,7 @@ local function createFinder(D)
     local settings={}
     if type(readfile)=='function' then pcall(function() local data=Http:JSONDecode(readfile(settingsPath));if type(data)=='table' then settings=data end end) end
     if type(settings.myServer)=='boolean' then othersOnly=settings.myServer end
+    local autoExecuteEnabled = settings.autoExecute ~= false
     if type(settings.minRank)=='number' then
         local saved=math.floor(settings.minRank)
         if saved>=6 and saved<=10 then minRank=saved
@@ -412,7 +413,7 @@ local function createFinder(D)
         if type(writefile)~='function' then return end
         pcall(function()
             local function coords(p) return {p.X.Scale,p.X.Offset,p.Y.Scale,p.Y.Offset} end
-            writefile(settingsPath,Http:JSONEncode({myServer=othersOnly,minRank=minRank,rarityMenu='mythic-up-v1',menuHotkey=menuHotkey.Name,hotkeyDefaultVersion=2,sizeFactor=sizeFactor,sizePercent=sizePercent,panel=coords(panel.Position),icon=coords(open.Position)}))
+            writefile(settingsPath,Http:JSONEncode({myServer=othersOnly,minRank=minRank,rarityMenu='mythic-up-v1',menuHotkey=menuHotkey.Name,hotkeyDefaultVersion=2,sizeFactor=sizeFactor,sizePercent=sizePercent,autoExecute=autoExecuteEnabled,panel=coords(panel.Position),icon=coords(open.Position)}))
         end)
     end
     D.saveGuiBeforeTeleport=saveSettings
@@ -540,6 +541,20 @@ local function createFinder(D)
     scope.Activated:Connect(function() setScope(false) end)
     myScope.Activated:Connect(function() setScope(true) end)
     styleScope()
+    local autoExecuteButton=D.make('TextButton',{Name='AutoExecuteToggle',Text='',Position=UDim2.new(0,10,1,-96),Size=UDim2.new(1,-20,0,34),BackgroundColor3=Color3.fromRGB(45,130,75),TextColor3=Color3.new(1,1,1),TextSize=13},panel)
+    autoExecuteButton.TextScaled=true
+    autoExecuteButton.TextWrapped=false
+    D.make('UITextSizeConstraint',{MinTextSize=1,MaxTextSize=13},autoExecuteButton)
+    local function updateAutoExecuteButton()
+        autoExecuteButton.Text='AUTO EXECUTE: '..(autoExecuteEnabled and 'ON' or 'OFF')
+        autoExecuteButton.BackgroundColor3=autoExecuteEnabled and Color3.fromRGB(45,130,75) or Color3.fromRGB(125,65,65)
+    end
+    autoExecuteButton.Activated:Connect(function()
+        autoExecuteEnabled=not autoExecuteEnabled
+        updateAutoExecuteButton()
+        saveSettings()
+    end)
+    updateAutoExecuteButton()
     local rarityOptions={{name='Mythic',rank=6},{name='Cosmic',rank=7},{name='Secret',rank=8},{name='Eternal',rank=9},{name='Divine',rank=10},{name='Any',rank=0}}
     local rarityIndex=#rarityOptions
     minRank=0
@@ -2415,13 +2430,22 @@ local player = Players.LocalPlayer
 
 local VERIFY_URL = "https://tenshi-key-system.tenshifinder.workers.dev/validate"
 
--- Re-execute UNKNOWN automatically after a server teleport when the executor supports it.
+-- Re-execute UNKNOWN after teleport only when the saved setting is enabled.
 local RAW_SCRIPT_URL = "https://raw.githubusercontent.com/mostafaezzatrqm700-droid/UNKNOWN/UNKNOWN/UNKNOWN.lua"
+local autoExecuteEnabled = true -- Preserve the previous default; users can turn it off in the Finder UI.
+if type(readfile) == "function" then
+    pcall(function()
+        local saved = HttpService:JSONDecode(readfile("tenshi_beta_ui.json"))
+        if type(saved) == "table" and type(saved.autoExecute) == "boolean" then
+            autoExecuteEnabled = saved.autoExecute
+        end
+    end)
+end
 local queueTeleport = queue_on_teleport or queueonteleport
 if type(queueTeleport) ~= "function" and type(syn) == "table" then
     queueTeleport = syn.queue_on_teleport
 end
-if type(queueTeleport) == "function" then
+if autoExecuteEnabled and type(queueTeleport) == "function" then
     pcall(function()
         queueTeleport('loadstring(game:HttpGet("' .. RAW_SCRIPT_URL .. '"))()')
     end)
