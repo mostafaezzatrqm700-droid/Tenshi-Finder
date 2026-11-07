@@ -325,6 +325,7 @@ local function createFinder(D)
         joinedEgg=saved
         pcall(function() Teleports:SetTeleportSetting(joinedEggSettingKey,saved) end)
     end
+    D.joinedEgg=joinedEgg
     local localHighlight
     local pageOffset,nextOffset=0,nil
     local queryEpoch=0
@@ -1412,7 +1413,7 @@ local function createFinder(D)
             card.nameLabel.Position=UDim2.fromOffset(86+width,3);card.nameLabel.Size=UDim2.new(1,-94-width,0,26)
         end
         if card.nameLabel.Text~=tostring(entry.name) then card.nameLabel.Text=tostring(entry.name) end
-        card.nameLabel.Size=UDim2.new(1,(entry.takenConfirmed and -194 or -94)-rankWidth,0,26)
+        card.nameLabel.Size=UDim2.new(1,(entry.takenConfirmed and -194 or -94)-card.rankLabel.Size.X.Offset,0,26)
         card.takenAgeLabel.Visible=entry.takenConfirmed==true and type(entry.takenAt)=='number'
         card.takenAgeLabel.Text=card.takenAgeLabel.Visible and takenAgeText(entry.takenAt) or ''
         if card.icon.Image~=(entry.icon or '') then card.icon.Image=entry.icon or '' end
