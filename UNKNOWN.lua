@@ -632,14 +632,9 @@ local function createFinder(D)
             queryStatus='Enter a value from 1B to 50B (example: 1.5B)'
         end
     end)
-    -- Beast Auto Join: enabled by default and remembered across executions/teleports.
-    local autoJoinStatePath='unknown_auto_join_state.txt'
+    -- Beast Auto Join starts ON every time UNKNOWN is launched.
+    -- The in-session button remains the only way to turn it OFF.
     local autoJoinEnabled=true
-    if type(readfile)=='function' then
-        local savedState
-        pcall(function() savedState=readfile(autoJoinStatePath) end)
-        if savedState=='OFF' then autoJoinEnabled=false end
-    end
     local autoJoinBusy=false
     local autoJoinCandidates={}
     local autoJoinCandidateIndex=1
@@ -656,9 +651,6 @@ local function createFinder(D)
     autoJoinButton.Activated:Connect(function()
         if not active then return end
         autoJoinEnabled=not autoJoinEnabled
-        if type(writefile)=='function' then
-            pcall(function() writefile(autoJoinStatePath,autoJoinEnabled and 'ON' or 'OFF') end)
-        end
         autoJoinCandidates={};autoJoinCandidateIndex=1;autoJoinRetryRequested=false
         paintAutoJoin()
         queryStatus=autoJoinEnabled and 'Auto Join enabled: checking the top 3 servers' or 'Auto Join disabled'
