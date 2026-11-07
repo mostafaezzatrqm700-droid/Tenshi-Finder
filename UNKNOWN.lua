@@ -689,8 +689,8 @@ local function createFinder(D)
                 return Http:JSONDecode(response.Body)
             end)
             if ok and type(data)=='table' and type(data.endpoint)=='string' and data.endpoint:match('^https://[%w%.%-]+$') and type(data.roomKey)=='string' then
+                -- Experimental config is optional metadata-only; never replace the primary public feed endpoint.
                 featureConfig=data
-                if publicBroadcastConfig then config=data;feedAt=-math.huge end
             end
             task.wait(60)
         end
@@ -699,7 +699,7 @@ local function createFinder(D)
         local data,err=network('https://raw.githubusercontent.com/syss1211/Tenshi-script/main/NYX-Finder-Config.json?nyx='..os.time(),'GET')
         if not data then return false,err end
         if type(data.endpoint)~='string' or not data.endpoint:match('^https://[%w%.%-]+$') or type(data.roomKey)~='string' then return false,'Finder configuration unavailable' end
-        publicBroadcastConfig=data;config=featureConfig or data; configAt=os.clock()
+        publicBroadcastConfig=data;config=data; configAt=os.clock()
         if false and type(writefile)=='function' then
             local asset=getcustomasset or getsynasset
             if type(asset)=='function' then
