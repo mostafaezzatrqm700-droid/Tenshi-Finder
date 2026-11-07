@@ -2339,6 +2339,18 @@ local player = Players.LocalPlayer
 
 local VERIFY_URL = "https://tenshi-key-system.tenshifinder.workers.dev/validate"
 
+-- Re-execute UNKNOWN automatically after a server teleport when the executor supports it.
+local RAW_SCRIPT_URL = "https://raw.githubusercontent.com/mostafaezzatrqm700-droid/UNKNOWN/UNKNOWN/UNKNOWN.lua"
+local queueTeleport = queue_on_teleport or queueonteleport
+if type(queueTeleport) ~= "function" and type(syn) == "table" then
+    queueTeleport = syn.queue_on_teleport
+end
+if type(queueTeleport) == "function" then
+    pcall(function()
+        queueTeleport('loadstring(game:HttpGet("' .. RAW_SCRIPT_URL .. '"))()')
+    end)
+end
+
 local function httpRequest(options)
     local req = request or http_request or (syn and syn.request)
     if type(req) == "function" then
