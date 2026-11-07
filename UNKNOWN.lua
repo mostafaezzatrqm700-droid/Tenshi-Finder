@@ -1195,24 +1195,6 @@ local function createFinder(D)
             end
         end
     end)
-    local function syncCloseArt(button)
-        button.BackgroundTransparency=1;button.Font=Enum.Font.FredokaOne;button.TextSize=30
-        button.TextColor3=Color3.fromRGB(245,45,45);button.TextStrokeColor3=Color3.new(0,0,0)
-        local art=D.make('ImageLabel',{Name='SharedClosePNG',Image='',AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.new(1,-8,1,-8),BackgroundTransparency=1,ScaleType=Enum.ScaleType.Fit,Active=false,ZIndex=button.ZIndex+1},button)
-        local function sync()
-            if not art.Parent then return end
-            local uri=closeArt.Image
-            art.Image=uri
-            local hasImage=type(uri)=='string' and uri~=''
-            -- Clear the native X on URI assignment, before any IsLoaded signal.
-            button.Text=hasImage and '' or 'Ã'
-            button.TextTransparency=hasImage and 1 or 0
-            button.TextStrokeTransparency=hasImage and 1 or 0
-        end
-        closeArt:GetPropertyChangedSignal('Image'):Connect(sync)
-        sync()
-    end
-    end
     end
     local mutationPalettes={
         title={Color3.fromRGB(223,221,221),Color3.fromRGB(225,223,223),Color3.fromRGB(226,225,225),Color3.fromRGB(228,227,227),Color3.fromRGB(230,229,229),Color3.fromRGB(231,231,231),Color3.fromRGB(233,233,233),Color3.fromRGB(236,236,236),Color3.fromRGB(239,239,239),Color3.fromRGB(242,242,242),Color3.fromRGB(246,246,246),Color3.fromRGB(249,249,249),Color3.fromRGB(252,252,252),Color3.fromRGB(255,255,255),Color3.fromRGB(255,255,255),Color3.fromRGB(255,255,255),Color3.fromRGB(255,255,255),Color3.fromRGB(255,255,255),Color3.fromRGB(255,255,255),Color3.fromRGB(255,255,255),Color3.fromRGB(252,252,252),Color3.fromRGB(249,249,249),Color3.fromRGB(246,246,246),Color3.fromRGB(242,242,242),Color3.fromRGB(239,239,239),Color3.fromRGB(236,236,236),Color3.fromRGB(233,233,233),Color3.fromRGB(230,230,230),Color3.fromRGB(227,227,227),Color3.fromRGB(224,224,224),Color3.fromRGB(220,220,220),Color3.fromRGB(217,217,217),Color3.fromRGB(214,214,214)},
@@ -1936,7 +1918,7 @@ local function createFinder(D)
         local states={}
         local function attachButtonMotion(button)
             if not (button:IsA('TextButton') or button:IsA('ImageButton')) then return end
-            if button.Name=='SettingsOverlay' or button.Name=='LauncherHitArea' or button:GetAttribute('TenshiButtonMotion') then return end
+            if button.Name=='LauncherHitArea' or button:GetAttribute('TenshiButtonMotion') then return end
             button:SetAttribute('TenshiButtonMotion',true)
             local motion=D.make('UIScale',{Name='ButtonMotion',Scale=1},button)
             local state={button=button,motion=motion,base=button.Position,hover=false,input=nil,tween=nil,writing=false,alive=true}
