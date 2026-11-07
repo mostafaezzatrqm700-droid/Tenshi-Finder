@@ -716,7 +716,7 @@ local function createFinder(D)
         return true
     end
     local function headers() return {['Content-Type']='application/json',['X-NYX-Room']=config.roomKey} end
-    local broadcastInterval=15
+    local broadcastInterval=5
     local function snapshot()
         local eggs={}
         for _,entry in ipairs(D.entries()) do
@@ -2084,7 +2084,7 @@ local function createFinder(D)
                 if not config or os.clock()-configAt>60 then local success,message=loadConfig(); if not success then error(message) end end
                 local peak=snapshot()
                 local ids={}
-                for i=1,math.min(5,#peak) do ids[#ids+1]=peak[i].uid end
+                for i=1,math.min(10,#peak) do ids[#ids+1]=peak[i].uid end
                 local signature=table.concat(ids,';')
                 if os.clock()-lastReport>=broadcastInterval or (#ids>0 and signature~=lastPeakSignature) then
                     local success,message=report()
