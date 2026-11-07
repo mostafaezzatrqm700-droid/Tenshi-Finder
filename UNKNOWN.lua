@@ -2451,7 +2451,7 @@ local function setStatus(message, color)
     status.TextColor3 = color or Color3.fromRGB(160, 160, 175)
 end
 
-verifyButton.MouseButton1Click:Connect(function()
+local function verifyKey()
     if busy then return end
 
     local key = keyBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
@@ -2495,6 +2495,11 @@ verifyButton.MouseButton1Click:Connect(function()
         return
     end
 
+    -- Remember the key locally only after the server confirms it is valid.
+    if type(writefile) == "function" then
+        pcall(function() writefile("unknown_saved_access_key.txt", key) end)
+    end
+
     setStatus("Key accepted. Loading UNKNOWN...", Color3.fromRGB(100, 220, 140))
     verifyButton.Text = "ACCEPTED"
 
@@ -2507,4 +2512,16 @@ verifyButton.MouseButton1Click:Connect(function()
         warn("[UNKNOWN] Finder startup failed: " .. tostring(loadError))
         setStatus("Finder failed to start. Check executor.", Color3.fromRGB(255, 100, 100))
     end
-end)
+end
+
+verifyButton.MouseButton1Click:Connect(verifyKey)
+
+-- Reuse the saved key on the next execution, but always revalidate it online.
+if type(readfile) == "function" then
+    local savedKey
+    pcall(function() savedKey = readfile("unknown_saved_access_key.txt") end)
+    if type(savedKey) == "string" and savedKey:gsub("%s+", "") ~= "" then
+        keyBox.Text = savedKey
+        task.defer(verifyKey)
+    end
+end
