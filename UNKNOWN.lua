@@ -1185,105 +1185,51 @@ local function createFinder(D)
     gear:GetPropertyChangedSignal('IsLoaded'):Connect(function() if gear.IsLoaded and gear.Image~='' then settingsButton.TextTransparency=1 end end)
     loadUiAsset(gear,'gear')
     local settingsOverlay=D.make('TextButton',{Name='SettingsOverlay',Text='',Visible=false,Size=UDim2.fromScale(1,1),BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=0.32,AutoButtonColor=false,Active=true,ZIndex=50},panel)
-    local settingsBox=D.make('Frame',{Name='SettingsBox',AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(224,112),BackgroundColor3=Color3.fromRGB(43,45,50),Active=true,ZIndex=51},settingsOverlay)
+    local settingsBox=D.make('Frame',{Name='SettingsBox',AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(244,178),BackgroundColor3=Color3.fromRGB(43,45,50),Active=true,ZIndex=51},settingsOverlay)
     D.make('UICorner',{CornerRadius=UDim.new(0,4)},settingsBox)
     themeModal(settingsBox)
     local function stopSettings()
         settingsOverlay.Visible=false
     end
 
-    -- NIGHT SKY: reproduce Tenshi Finder Beta 0.6's local Lighting behavior.
-    local nightSky={enabled=false,writing=false,skies={},clock=nil,created=nil}
-    local lighting=game:GetService('Lighting')
-    local function applyNightSky()
-        if not nightSky.enabled or nightSky.writing then return end
-        nightSky.writing=true
-        if lighting.ClockTime~=22 then lighting.ClockTime=22 end
-        for _,sky in ipairs(lighting:GetChildren()) do
-            if sky:IsA('Sky') then
-                if not nightSky.skies[sky] then
-                    nightSky.skies[sky]={stars=sky.StarCount,bodies=sky.CelestialBodiesShown}
-                end
-                sky.StarCount=3000
-                sky.CelestialBodiesShown=true
-            end
-        end
-        nightSky.writing=false
+    -- Restore the original Settings controls: GUI size and menu hotkey.
+    settingsBox.Size=UDim2.fromOffset(244,178)
+    local sizeTitle=D.label(settingsBox,'CUSTOM GUI',UDim2.fromOffset(12,12),UDim2.fromOffset(112,22),Color3.new(1,1,1),14)
+    sizeTitle.ZIndex=55
+    local sizeValue=D.make('TextLabel',{Name='GuiSizeValue',Text=tostring(sizePercent)..'%',Position=UDim2.fromOffset(92,39),Size=UDim2.fromOffset(60,30),BackgroundTransparency=1,TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=15,ZIndex=56},settingsBox)
+    local function sizeButton(name,caption,x,delta)
+        local button=D.make('TextButton',{Name=name,Text=caption,Position=UDim2.fromOffset(x,39),Size=UDim2.fromOffset(34,30),BackgroundColor3=Color3.fromRGB(65,70,80),TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=19,ZIndex=56},settingsBox)
+        D.make('UICorner',{CornerRadius=UDim.new(0,4)},button)
+        button.Activated:Connect(function()
+            sizePercent=D.publicGuiPercent(sizePercent+delta)
+            sizeFactor=sizePercent/100
+            sizeValue.Text=tostring(sizePercent)..'%'
+            fitFinder()
+            saveSettings()
+        end)
+        return button
     end
-    local nightSkyButton
-    local function setNightSky(enabled,persist)
-        enabled=enabled==true
-        if enabled and not nightSky.enabled then
-            local current=lighting.ClockTime
-            nightSky.clock=(current==22) and 14 or current
-            nightSky.enabled=true
-            if not lighting:FindFirstChildOfClass('Sky') then
-                nightSky.created=Instance.new('Sky')
-                nightSky.created.Name='UNKNOWN_NightSky'
-                nightSky.created.Parent=lighting
-            end
-            applyNightSky()
-        elseif not enabled and nightSky.enabled then
-            nightSky.enabled=false
-            nightSky.writing=true
-            lighting.ClockTime=tonumber(nightSky.clock) or 14
-            for sky,saved in pairs(nightSky.skies) do
-                pcall(function()
-                    if sky.Parent then
-                        sky.StarCount=saved.stars
-                        sky.CelestialBodiesShown=saved.bodies
-                    end
-                end)
-            end
-            nightSky.skies={}
-            if nightSky.created then
-                nightSky.created:Destroy()
-                nightSky.created=nil
-            end
-            nightSky.writing=false
-        end
-        if persist~=false then
-            if type(writefile)=='function' then
-                pcall(function()
-                    writefile('unknown_night_sky_'..tostring(player.UserId)..'.json',Http:JSONEncode(enabled))
-                end)
-            end
-            pcall(function()
-                Teleports:SetTeleportSetting('UNKNOWN_NightSky_'..tostring(player.UserId),enabled)
-            end)
-        end
-        nightSkyButton.Text='NIGHT SKY  '..(nightSky.enabled and 'ON' or 'OFF')
-        nightSkyButton.BackgroundColor3=nightSky.enabled and Color3.fromRGB(40,135,70) or Color3.fromRGB(65,70,80)
-    end
-    nightSkyButton=D.make('TextButton',{Name='NightSkyToggle',Text='NIGHT SKY  OFF',Position=UDim2.fromOffset(12,58),Size=UDim2.fromOffset(200,40),BackgroundColor3=Color3.fromRGB(65,70,80),TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=15,ZIndex=55},settingsBox)
-    D.make('UICorner',{CornerRadius=UDim.new(0,5)},nightSkyButton)
-    nightSkyButton.Activated:Connect(function() setNightSky(not nightSky.enabled) end)
-    local nightSkyChanged=lighting:GetPropertyChangedSignal('ClockTime'):Connect(function()
-        if nightSky.enabled and not nightSky.writing and lighting.ClockTime~=22 then
-            nightSky.clock=lighting.ClockTime
-            applyNightSky()
-        end
+    sizeButton('GuiSizeMinus','−',52,-10)
+    sizeButton('GuiSizePlus','+',158,10)
+    local hotkeyTitle=D.label(settingsBox,'CUSTOM HOTKEY MENU',UDim2.fromOffset(12,82),UDim2.fromOffset(170,20),Color3.new(1,1,1),13)
+    hotkeyTitle.ZIndex=55
+    local capturingHotkey=false
+    local hotkeyButton=D.make('TextButton',{Name='CustomMenuHotkey',Text='KEY: '..menuHotkey.Name,Position=UDim2.fromOffset(12,108),Size=UDim2.fromOffset(220,30),BackgroundColor3=Color3.fromRGB(65,70,80),TextColor3=Color3.new(1,1,1),Font=Enum.Font.GothamBold,TextSize=13,ZIndex=56},settingsBox)
+    D.make('UICorner',{CornerRadius=UDim.new(0,4)},hotkeyButton)
+    hotkeyButton.Activated:Connect(function()
+        capturingHotkey=true
+        hotkeyButton.Text='PRESS ANY KEY...'
+        hotkeyButton.BackgroundColor3=Color3.fromRGB(40,105,160)
     end)
-    local nightSkyAdded=lighting.ChildAdded:Connect(function(child)
-        if child:IsA('Sky') and nightSky.enabled then applyNightSky() end
+    local captureConnection=Input.InputBegan:Connect(function(input,processed)
+        if not capturingHotkey or input.UserInputType~=Enum.UserInputType.Keyboard or input.KeyCode==Enum.KeyCode.Unknown then return end
+        capturingHotkey=false
+        menuHotkey=input.KeyCode
+        hotkeyButton.Text='KEY: '..menuHotkey.Name
+        hotkeyButton.BackgroundColor3=Color3.fromRGB(65,70,80)
+        saveSettings()
     end)
-    D.gui.Destroying:Connect(function()
-        nightSkyChanged:Disconnect()
-        nightSkyAdded:Disconnect()
-        setNightSky(false,false)
-    end)
-    local savedNightSky=false
-    pcall(function()
-        if type(readfile)=='function' then
-            savedNightSky=Http:JSONDecode(readfile('unknown_night_sky_'..tostring(player.UserId)..'.json'))==true
-        end
-    end)
-    pcall(function()
-        local value=Teleports:GetTeleportSetting('UNKNOWN_NightSky_'..tostring(player.UserId))
-        if type(value)=='boolean' then savedNightSky=value end
-    end)
-    if savedNightSky then setNightSky(true,false) end
-
+    D.gui.Destroying:Connect(function() captureConnection:Disconnect() end)
     local settingsClose=D.make('TextButton',{Name='CloseSettings',Text='Ã—',Position=UDim2.new(1,-46,0,5),Size=UDim2.fromOffset(40,40),BackgroundColor3=Color3.fromRGB(170,45,55),TextColor3=Color3.new(1,1,1),TextSize=24,ZIndex=56},settingsBox)
     settingsClose.Activated:Connect(stopSettings)
     settingsOverlay.Activated:Connect(stopSettings)
@@ -1292,7 +1238,7 @@ local function createFinder(D)
     end)
     local hotkeyConnection=Input.InputBegan:Connect(function(input,processed)
         if input.UserInputType~=Enum.UserInputType.Keyboard or input.KeyCode==Enum.KeyCode.Unknown then return end
-        if processed or Input:GetFocusedTextBox() then return end
+        if capturingHotkey or processed or Input:GetFocusedTextBox() then return end
         if input.KeyCode==menuHotkey then
             panel.Visible=not panel.Visible;D.localPanel.Visible=not panel.Visible
             if not panel.Visible then stopSettings() end
