@@ -304,7 +304,7 @@ local function createFinder(D)
     local localStates={}
     local reportStatus='Connecting'
     local queryStatus=''
-    local minRate,minRank=1e9,6
+    local minRate,minRank=1e9,0
     local joining=false
     local localHighlight
     local viewerCode=PREMIUM_EDITION and AUTO_KEY or ''
@@ -319,6 +319,7 @@ local function createFinder(D)
         if saved>=6 and saved<=10 then minRank=saved
         elseif saved==0 and settings.rarityMenu=='mythic-up-v1' then minRank=0 end
     end
+    minRank=0 -- Always use Any; the rarity selector is hidden.
     local menuHotkey=Enum.KeyCode.F
     if type(settings.menuHotkey)=='string' then
         pcall(function() local saved=Enum.KeyCode[settings.menuHotkey];if saved and saved~=Enum.KeyCode.Unknown and not (settings.menuHotkey=='RightShift' and settings.hotkeyDefaultVersion~=2) then menuHotkey=saved end end)
@@ -572,7 +573,7 @@ local function createFinder(D)
     myScope.Activated:Connect(function() setScope(true) end)
     styleScope()
     local rarityOptions={{name='Mythic',rank=6},{name='Cosmic',rank=7},{name='Secret',rank=8},{name='Eternal',rank=9},{name='Divine',rank=10},{name='Any',rank=0}}
-    local rarityIndex=1
+    local rarityIndex=#rarityOptions
     for i,option in ipairs(rarityOptions) do if option.rank==minRank then rarityIndex=i;break end end
     minRank=rarityOptions[rarityIndex].rank
     local function rarityButtonText()
@@ -581,6 +582,7 @@ local function createFinder(D)
         return 'MIN RARITY: <font color="'..colors[name]..'">'..name..'</font>'
     end
     local rarity=D.make('TextButton',{Text=rarityButtonText(),RichText=true,Position=UDim2.new(0,10,1,-96),Size=UDim2.new(0.60,-15,0,36),BackgroundColor3=Color3.fromRGB(45,90,175),TextColor3=Color3.new(1,1,1),TextSize=12},panel)
+    rarity.Visible=false;rarity.Active=false
     rarity.Activated:Connect(function()
         rarityIndex=rarityIndex%#rarityOptions+1;minRank=rarityOptions[rarityIndex].rank
         rarity.Text=rarityButtonText()
