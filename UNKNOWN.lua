@@ -1955,19 +1955,40 @@ local function createFinder(D)
                     queryStatus=claim and (claim.error or 'Server reserved; choose another') or ('Join reservation failed: '..tostring(claimError))
                     return
                 end
+                -- Refresh our own server report as best-effort only; a report failure
+                -- must never prevent joining the already-reserved destination server.
                 local shared,shareError=report()
-                if not shared then joining=false;joiningKey=nil;queryStatus='Save current server failed: '..tostring(shareError);return end
+                if not shared then warn('UNKNOWN Join: current-server report skipped:',tostring(shareError)) end
                 local joinExpiry=math.min(entry.expiresAt,tonumber(claim.expiresAt) or entry.expiresAt)
                 if (os.clock()+clockOffset)*1000>=joinExpiry then
                     joining=false;joiningKey=nil;feedAt=-math.huge;entry.expiresAt=joinExpiry;render()
                     queryStatus='Reset reached; refreshing';return
                 end
+                local destinationPlaceId=tonumber(entry.placeId)
+                local destinationJobId=tostring(entry.jobId or '')
+                if not destinationPlaceId or destinationPlaceId<=0 or destinationJobId=='' then
+                    joining=false;joiningKey=nil;queryStatus='Join failed: invalid server ID';updateCard(card,entry,card.row.LayoutOrder or 1);return
+                end
                 rememberTeleportTarget(entry)
                 D.saveGuiBeforeTeleport()
                 D.stopFarm()
-                local ok,err=pcall(function() Teleports:TeleportToPlaceInstance(entry.placeId,entry.jobId,D.player) end)
-                if not ok then queryStatus='Join failed: '..tostring(err); joining=false;joiningKey=nil end
-                task.delay(12,function() joining=false;joiningKey=nil end)
+                queryStatus='Teleporting to '..tostring(entry.name)..'...'
+                local ok,err=pcall(function()
+                    Teleports:TeleportToPlaceInstance(destinationPlaceId,destinationJobId,D.player)
+                end)
+                if not ok then
+                    queryStatus='Join failed: '..tostring(err)
+                    joining=false;joiningKey=nil
+                    updateCard(card,entry,card.row.LayoutOrder or 1)
+                    warn('UNKNOWN Join teleport error:',err)
+                end
+                task.delay(12,function()
+                    if joining and joiningKey==entry.key then
+                        joining=false;joiningKey=nil
+                        queryStatus='Teleport did not start; try JOIN again'
+                        updateCard(card,entry,card.row.LayoutOrder or 1)
+                    end
+                end)
             end)
             end
             card.entry=entry
